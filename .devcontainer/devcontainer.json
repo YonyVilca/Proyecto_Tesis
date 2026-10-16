@@ -1,0 +1,9 @@
+{
+  "name": "PWA Hogar",
+  "image": "mcr.microsoft.com/devcontainers/java:1-21-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/java:1": { "version": "none", "installMaven": "true" },
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "postCreateCommand": "mvn -B -q -f backend/pom.xml dependency:go-offline"
+}
