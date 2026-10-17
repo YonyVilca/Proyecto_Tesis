@@ -1,6 +1,3 @@
-<<<<<<< HEAD
-# Proyecto_Tesis
-=======
 # PWA Hogar Protegido Virgen del Rosario
 
 Aplicación web progresiva para el seguimiento del avance funcional de los residentes de un hogar protegido. Proyecto de tesis de Yony Alex Vilca Mamani.
@@ -34,5 +31,3 @@ psql -d hogar -v ON_ERROR_STOP=1 -f db/migration/V1__esquema_inicial.sql
 psql -d hogar -v ON_ERROR_STOP=1 -f db/pruebas/pruebas_esquema.sql
 ```
 
-Todos los datos de prueba son sintéticos.
->>>>>>> 532223e3b83d1a434b200d12c38a1ad4050e935d
