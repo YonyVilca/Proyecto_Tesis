@@ -1,0 +1,3 @@
+spring:
+  flyway:
+    locations: filesystem:db/migration,filesystem:db/desarrollo

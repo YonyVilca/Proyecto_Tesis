@@ -9,6 +9,7 @@ Los cuidadores registran desde su teléfono, incluso sin señal, y la coordinado
 ```
 backend/   Servidor en Java 21. Por ahora, el dominio y el módulo de análisis.
 db/        Migraciones de PostgreSQL 16 y pruebas del esquema.
+db/desarrollo/  Datos sintéticos, solo para desarrollo y pruebas.
 ```
 
 ## Estado del avance
