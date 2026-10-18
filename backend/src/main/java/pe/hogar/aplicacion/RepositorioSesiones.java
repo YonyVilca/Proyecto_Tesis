@@ -1,6 +1,5 @@
 package pe.hogar.aplicacion;
 
-import java.time.LocalDateTime;
 import java.util.Optional;
 import pe.hogar.dominio.residentes.CuentaAcceso;
 
@@ -8,6 +7,6 @@ import pe.hogar.dominio.residentes.CuentaAcceso;
 public interface RepositorioSesiones {
     void crear(CuentaAcceso cuenta, String tokenHash);
     Optional<CuentaAcceso> buscarActivaPorTokenHash(String tokenHash);
-    void actualizarUltimoUso(String tokenHash, LocalDateTime ultimoUso);
-    void revocar(String tokenHash, LocalDateTime revocadaEn);
+    void actualizarUltimoUso(String tokenHash);
+    void revocar(String tokenHash);
 }
