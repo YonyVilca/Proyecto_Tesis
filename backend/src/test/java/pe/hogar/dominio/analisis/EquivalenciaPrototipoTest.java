@@ -149,13 +149,13 @@ class EquivalenciaPrototipoTest {
                                             Map<UUID, String> codigos) {
         var fabrica = new FabricaRegistro();
         var expediente = new Expediente(UUID.randomUUID(), "XX");
-        var coordinadora = new CuentaAcceso(UUID.randomUUID(), "coordinadora", Rol.COORDINADORA);
+        var coordinadora = new CuentaAcceso("COO-01", "Coordinadora Uno", "coordinadora", "hash", Rol.COORDINADORA, true);
         Map<String, CuentaAcceso> cuentas = new HashMap<>();
         List<Registro> registros = new ArrayList<>();
         for (JsonNode n : lista) {
             LocalDateTime momento = LocalDateTime.parse(n.get("fechaHora").asText());
             CuentaAcceso cuenta = cuentas.computeIfAbsent(n.get("cuenta").asText(),
-                    u -> new CuentaAcceso(UUID.randomUUID(), u, Rol.CUIDADOR));
+                    u -> new CuentaAcceso("CUI-01", "Cuidador Uno", u, "hash", Rol.CUIDADOR, true));
             var turno = new TurnoDeclarado(UUID.randomUUID(), TipoTurno.valueOf(n.get("tipoTurno").asText()),
                     cuenta, momento);
             Registro r = fabrica.crear(actividad, expediente, turno, momento);

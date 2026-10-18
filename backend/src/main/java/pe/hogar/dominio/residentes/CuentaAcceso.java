@@ -1,22 +1,35 @@
 package pe.hogar.dominio.residentes;
 
 import java.util.Objects;
-import java.util.UUID;
 
-/** Cuenta individual de un cuidador o de la coordinadora (RF-01). Solo los atributos que usa el dominio. */
+/** Cuenta individual con estado de acceso y credenciales (RF-01, RF-04, DC-02). */
 public final class CuentaAcceso {
-
-    private final UUID codigo;
+    private final String codigo;
+    private final String nombreCompleto;
     private final String usuario;
+    private final String hashContrasena;
     private final Rol rol;
+    private final boolean activa;
 
-    public CuentaAcceso(UUID codigo, String usuario, Rol rol) {
+    public CuentaAcceso(String codigo, String nombreCompleto, String usuario, String hashContrasena,
+                        Rol rol, boolean activa) {
         this.codigo = Objects.requireNonNull(codigo);
+        this.nombreCompleto = Objects.requireNonNull(nombreCompleto);
         this.usuario = Objects.requireNonNull(usuario);
+        this.hashContrasena = Objects.requireNonNull(hashContrasena);
         this.rol = Objects.requireNonNull(rol);
+        this.activa = activa;
     }
 
-    public UUID getCodigo() { return codigo; }
+    /** Valida la contraseña mediante un verificador externo y bloquea cuentas desactivadas (RF-04, RNF-23). */
+    public boolean autenticar(String contrasena, IVerificadorContrasena verificador) {
+        return activa && verificador.verificar(contrasena, hashContrasena);
+    }
+
+    public String getCodigo() { return codigo; }
+    public String getNombreCompleto() { return nombreCompleto; }
     public String getUsuario() { return usuario; }
+    public String getHashContrasena() { return hashContrasena; }
     public Rol getRol() { return rol; }
+    public boolean isActiva() { return activa; }
 }
