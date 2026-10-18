@@ -1,12 +1,14 @@
 package pe.hogar.integracion;
 
 import org.junit.jupiter.api.Test;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -42,11 +44,12 @@ class PermisosRolTest {
         String response = mvc.perform(post("/api/sesiones").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"usuario\":\"" + usuario + "\",\"contrasena\":\"desarrollo123\"}"))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
-        return new com.fasterxml.jackson.databind.ObjectMapper().readTree(response).get("token").asText();
+        return new ObjectMapper().readTree(response).get("token").asText();
     }
 
     @RestController
     static class ControladorPrueba {
+        @PreAuthorize("hasRole('COORDINADORA')")
         @GetMapping("/api/prueba/coordinacion") String coordinacion() { return "ok"; }
     }
 }

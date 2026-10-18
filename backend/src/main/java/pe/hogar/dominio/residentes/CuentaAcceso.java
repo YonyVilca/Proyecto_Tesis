@@ -29,7 +29,6 @@ public final class CuentaAcceso {
     public String getCodigo() { return codigo; }
     public String getNombreCompleto() { return nombreCompleto; }
     public String getUsuario() { return usuario; }
-    public String getHashContrasena() { return hashContrasena; }
     public Rol getRol() { return rol; }
     public boolean isActiva() { return activa; }
 }

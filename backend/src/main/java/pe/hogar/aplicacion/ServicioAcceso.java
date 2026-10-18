@@ -3,7 +3,6 @@ package pe.hogar.aplicacion;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
-import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.HexFormat;
 import java.util.Optional;
@@ -13,6 +12,7 @@ import pe.hogar.dominio.residentes.RepositorioCuentas;
 
 /** Coordina autenticación y sesiones persistentes con token revocable (RF-01, RF-02, RF-04, DD-53, SD-01). */
 public final class ServicioAcceso implements IAutenticacion {
+    private static final String HASH_CONTRASENA_DUMMY = "$2b$10$xj.WMN3Fqen9Fqx8bW1ucecQHhjPDg.3aJ6d19fDfkb9ft/wONwdS";
     private final RepositorioCuentas cuentas;
     private final RepositorioSesiones sesiones;
     private final IVerificadorContrasena verificador;
@@ -26,7 +26,11 @@ public final class ServicioAcceso implements IAutenticacion {
 
     @Override public Optional<Sesion> iniciarSesion(String usuario, String contrasena) {
         Optional<CuentaAcceso> cuenta = cuentas.buscarPorUsuario(usuario);
-        if (cuenta.isEmpty() || !cuenta.get().autenticar(contrasena, verificador)) return Optional.empty();
+        if (cuenta.isEmpty() || !cuenta.get().isActiva()) {
+            verificador.verificar(contrasena, HASH_CONTRASENA_DUMMY);
+            return Optional.empty();
+        }
+        if (!cuenta.get().autenticar(contrasena, verificador)) return Optional.empty();
         byte[] bytes = new byte[32];
         aleatorio.nextBytes(bytes);
         String token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
@@ -37,13 +41,13 @@ public final class ServicioAcceso implements IAutenticacion {
     @Override public Optional<Sesion> obtenerSesion(String token) {
         String tokenHash = hash(token);
         return sesiones.buscarActivaPorTokenHash(tokenHash).map(cuenta -> {
-            sesiones.actualizarUltimoUso(tokenHash, LocalDateTime.now());
+            sesiones.actualizarUltimoUso(tokenHash);
             return new Sesion(cuenta, cuenta.getRol(), token, null);
         });
     }
 
     @Override public void cerrarSesion(String token) {
-        sesiones.revocar(hash(token), LocalDateTime.now());
+        sesiones.revocar(hash(token));
     }
 
     private static String hash(String token) {

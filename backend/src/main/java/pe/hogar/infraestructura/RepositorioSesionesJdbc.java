@@ -2,7 +2,6 @@ package pe.hogar.infraestructura;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.time.LocalDateTime;
 import java.util.Optional;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -23,11 +22,11 @@ public class RepositorioSesionesJdbc implements RepositorioSesiones {
                 "FROM residentes.sesion s JOIN residentes.cuenta_acceso c ON c.id=s.cuenta_id " +
                 "WHERE s.token_hash=? AND s.revocada_en IS NULL AND c.activa=TRUE", this::mapear, tokenHash).stream().findFirst();
     }
-    @Override public void actualizarUltimoUso(String tokenHash, LocalDateTime ultimoUso) {
-        jdbc.update("UPDATE residentes.sesion SET ultimo_uso=? WHERE token_hash=? AND revocada_en IS NULL", ultimoUso, tokenHash);
+    @Override public void actualizarUltimoUso(String tokenHash) {
+        jdbc.update("UPDATE residentes.sesion SET ultimo_uso=now() WHERE token_hash=? AND revocada_en IS NULL", tokenHash);
     }
-    @Override public void revocar(String tokenHash, LocalDateTime revocadaEn) {
-        jdbc.update("UPDATE residentes.sesion SET revocada_en=? WHERE token_hash=? AND revocada_en IS NULL", revocadaEn, tokenHash);
+    @Override public void revocar(String tokenHash) {
+        jdbc.update("UPDATE residentes.sesion SET revocada_en=now() WHERE token_hash=? AND revocada_en IS NULL", tokenHash);
     }
     private CuentaAcceso mapear(ResultSet rs, int fila) throws SQLException {
         return new CuentaAcceso(rs.getString("codigo"), rs.getString("nombre_completo"), rs.getString("usuario"),
