@@ -21,6 +21,9 @@ Si una tarea no indica qué requisito y qué diagrama implementa, se pregunta an
 5. **Ningún archivo de más.** Cada archivo nuevo responde a una historia del backlog.
 6. **Las migraciones aplicadas no se editan.** Un cambio de esquema es una migración nueva `V<n>__descripcion.sql`.
 7. **Una historia, un cambio.** Commits con el requisito: `feat(RF-17): ...`, `test(RB-06): ...`, `fix(RB-11): ...`.
+8. **El agente no publica.** Implementa, verifica que pasen las pruebas
+   (mvn -B -f backend/pom.xml verify) y crea los commits en la rama local.
+   Nunca ejecuta git push ni crea el Pull Request; eso lo hace el tesista.
 
 ## Comandos
 
