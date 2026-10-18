@@ -27,8 +27,6 @@ public class RepositorioTurnosJdbc implements RepositorioTurnos {
     public void bloquearDeclaracion(UUID codigo, CuentaAcceso cuenta) {
         jdbc.queryForObject("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", Object.class,
                 codigo.toString());
-        jdbc.query("SELECT id FROM residentes.cuenta_acceso WHERE codigo=? FOR UPDATE",
-                rs -> { if (rs.next()) rs.getLong("id"); }, cuenta.getCodigo());
     }
 
     @Override
