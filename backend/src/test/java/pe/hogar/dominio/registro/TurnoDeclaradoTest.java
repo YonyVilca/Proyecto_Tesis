@@ -13,7 +13,7 @@ import pe.hogar.dominio.residentes.Rol;
 
 class TurnoDeclaradoTest {
 
-    private final CuentaAcceso cuidador = new CuentaAcceso(UUID.randomUUID(), "cuidador1", Rol.CUIDADOR);
+    private final CuentaAcceso cuidador = new CuentaAcceso("CUI-01", "Cuidador Uno", "cuidador1", "hash", Rol.CUIDADOR, true);
 
     private TurnoDeclarado turno(TipoTurno tipo, LocalDateTime momento) {
         return new TurnoDeclarado(UUID.randomUUID(), tipo, cuidador, momento);

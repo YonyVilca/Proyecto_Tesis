@@ -31,8 +31,8 @@ class RegistroTest {
     private static final NivelApoyo VERBAL = new NivelApoyo("VERBAL", "Apoyo verbal", 0.67, 2);
 
     private final FabricaRegistro fabrica = new FabricaRegistro();
-    private final CuentaAcceso cuidador = new CuentaAcceso(UUID.randomUUID(), "cuidador1", Rol.CUIDADOR);
-    private final CuentaAcceso coordinadora = new CuentaAcceso(UUID.randomUUID(), "coordinadora", Rol.COORDINADORA);
+    private final CuentaAcceso cuidador = new CuentaAcceso("CUI-01", "Cuidador Uno", "cuidador1", "hash", Rol.CUIDADOR, true);
+    private final CuentaAcceso coordinadora = new CuentaAcceso("COO-01", "Coordinadora Uno", "coordinadora", "hash", Rol.COORDINADORA, true);
     private final Expediente expediente = new Expediente(UUID.randomUUID(), "EM");
     private final TurnoDeclarado turno = new TurnoDeclarado(UUID.randomUUID(), TipoTurno.M, cuidador, INICIO);
 
