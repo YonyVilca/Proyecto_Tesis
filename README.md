@@ -7,7 +7,7 @@ Los cuidadores registran desde su teléfono, incluso sin señal, y la coordinado
 ## Estructura
 
 ```
-backend/   Servidor en Java 21. Por ahora, el dominio y el módulo de análisis.
+backend/   Servidor Spring Boot 3 en Java 21; dominio y módulo de análisis.
 db/        Migraciones de PostgreSQL 16 y pruebas del esquema.
 db/desarrollo/  Datos sintéticos, solo para desarrollo y pruebas.
 ```
@@ -23,12 +23,21 @@ db/desarrollo/  Datos sintéticos, solo para desarrollo y pruebas.
 
 ## Cómo probar
 
-Requiere Java 21, Maven y PostgreSQL 16, o abrir el repositorio en GitHub Codespaces.
+Requiere Java 21, Maven y Docker. `docker compose up -d` inicia PostgreSQL 16 local
+(base `hogar`, usuario `hogar`, contraseña `hogar_desarrollo`).
 
 ```bash
 mvn -B -f backend/pom.xml verify
-createdb hogar
-psql -d hogar -v ON_ERROR_STOP=1 -f db/migration/V1__esquema_inicial.sql
-psql -d hogar -v ON_ERROR_STOP=1 -f db/pruebas/pruebas_esquema.sql
 ```
+
+Para iniciar el servidor en desarrollo, desde el directorio `backend/` ejecuta:
+
+```bash
+mvn spring-boot:run -Dspring-boot.run.profiles=dev
+```
+
+El perfil `dev` carga migraciones del classpath y los datos sintéticos desde
+`../db/desarrollo`; por eso este comando debe ejecutarse desde `backend/`.
+Las migraciones se empaquetan en el jar. Los datos de `db/desarrollo` se copian
+solo al classpath de pruebas y no se incluyen en el artefacto de producción.
 

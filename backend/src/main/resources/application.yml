@@ -1,3 +1,7 @@
 spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/hogar}
+    username: ${SPRING_DATASOURCE_USERNAME:hogar}
+    password: ${SPRING_DATASOURCE_PASSWORD:hogar_desarrollo}
   flyway:
-    locations: filesystem:db/migration
+    locations: classpath:db/migration
