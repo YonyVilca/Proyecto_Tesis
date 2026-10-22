@@ -6,3 +6,9 @@ dist/
 .idea/
 .vscode/
 .DS_Store
+
+# Archivos de Eclipse/LazyVim
+.classpath
+.project
+.settings/
+.factorypath
