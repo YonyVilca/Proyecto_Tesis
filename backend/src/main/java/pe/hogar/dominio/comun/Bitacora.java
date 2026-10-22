@@ -1,6 +1,7 @@
 package pe.hogar.dominio.comun;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.Objects;
 import java.util.UUID;
 import pe.hogar.dominio.residentes.CuentaAcceso;
@@ -27,7 +28,7 @@ public final class Bitacora {
         this.valorAnterior = anterior;
         this.valorNuevo = nuevo;
         this.motivo = motivo;
-        this.fechaHora = LocalDateTime.now();
+        this.fechaHora = LocalDateTime.now(ZoneId.of("America/Lima"));
         this.autor = Objects.requireNonNull(autor);
     }
 
