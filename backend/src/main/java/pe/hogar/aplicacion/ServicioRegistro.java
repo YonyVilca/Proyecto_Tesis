@@ -8,7 +8,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.dao.DataAccessException;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import pe.hogar.dominio.registro.TipoTurno;
@@ -33,17 +32,12 @@ public class ServicioRegistro implements IRegistro {
     private final RepositorioCatalogoRegistro catalogo;
     private final FabricaRegistro fabrica = new FabricaRegistro();
 
-    @Autowired
     public ServicioRegistro(RepositorioTurnos turnos, ConsultaDatosTurno consultaDatos,
                             RepositorioRegistros registros, RepositorioCatalogoRegistro catalogo) {
         this.turnos = turnos;
         this.consultaDatos = consultaDatos;
         this.registros = registros;
         this.catalogo = catalogo;
-    }
-
-    public ServicioRegistro(RepositorioTurnos turnos, ConsultaDatosTurno consultaDatos) {
-        this(turnos, consultaDatos, null, null);
     }
 
     /** Recepción idempotente conforme a SD-04; el contenido del reenvío no altera el resultado (RF-32). */
@@ -65,7 +59,7 @@ public class ServicioRegistro implements IRegistro {
         if (expediente == null || actividad == null || (recibido.nivel() != null && nivel == null))
             return ResultadoRecepcion.RECHAZADO_VALIDACION;
         try {
-            Registro registro = fabrica.reconstruir(actividad, expediente, turno, recibido.inicioCaptura(),
+            Registro registro = fabrica.reconstruir(recibido.codigo(), actividad, expediente, turno, recibido.inicioCaptura(),
                     recibido.origen(), recibido.versionPlantilla());
             Oportunidad oportunidad = recibido.oportunidad() ? Oportunidad.SI : Oportunidad.NO;
             registro.indicarOportunidad(oportunidad, recibido.motivoSinOportunidad(), recibido.motivoOtro());
@@ -86,7 +80,7 @@ public class ServicioRegistro implements IRegistro {
                 if (recibido.secuenciaCorrecta() != null) porPasos.indicarSecuencia(recibido.secuenciaCorrecta());
             }
             registro.confirmar(nivel, recibido.nota(), recibido.finCaptura());
-            registros.guardar(recibido.codigo(), registro, recibido.camposModificados());
+            registros.guardar(registro, recibido.camposModificados());
             return ResultadoRecepcion.ACEPTADO;
         } catch (IllegalArgumentException | IllegalStateException ex) {
             return ResultadoRecepcion.RECHAZADO_VALIDACION;
