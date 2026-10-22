@@ -65,6 +65,17 @@ class TurnosTest {
                 Integer.class, java.util.UUID.fromString(codigo)));
         assertEquals(6, jdbc.queryForObject("SELECT count(*) FROM registro.registro_paso WHERE registro_id=?",
                 Integer.class, java.util.UUID.fromString(codigo)));
+        MvcResult descarga = mvc.perform(get("/api/turnos/{codigo}/datos", turno)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ultimosRegistros[0].codigo").value(codigo))
+                .andExpect(jsonPath("$.ultimosRegistros[0].expediente").value("00000000-0000-0000-0000-000000000001"))
+                .andExpect(jsonPath("$.ultimosRegistros[0].actividad").value("A-02"))
+                .andExpect(jsonPath("$.ultimosRegistros[0].versionPlantilla").value(1))
+                .andExpect(jsonPath("$.ultimosRegistros[0].pasos.length()").value(6))
+                .andExpect(jsonPath("$.ultimosRegistros[0].secuenciaCorrecta").value(true)).andReturn();
+        assertFalse(objectMapper.readTree(descarga.getResponse().getContentAsString())
+                .get("ultimosRegistros").get(0).has("nivel"));
 
         enviarRegistro("00000000-0000-0000-0000-000000000123",
                 registroJson("00000000-0000-0000-0000-000000000199", ahora, true, "INDEPENDIENTE", 6), token)

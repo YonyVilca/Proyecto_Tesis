@@ -30,5 +30,10 @@ public record DatosTurno(List<ExpedienteDatos> expedientes,
     }
     public record NivelDatos(String codigo, String nombre, String descripcionObservable,
                              BigDecimal peso, int orden) { }
-    public record RegistroResumen(UUID codigo, UUID expediente, String actividad) { }
+    /** Precarga del último registro puntuable; nunca contiene el nivel de apoyo (D-41). */
+    public record RegistroResumen(UUID codigo, UUID expediente, String actividad, int versionPlantilla,
+                                  List<PasoResumen> pasos, Boolean secuenciaCorrecta) {
+        public RegistroResumen { pasos = List.copyOf(pasos); }
+    }
+    public record PasoResumen(int orden, boolean cumplido) { }
 }
