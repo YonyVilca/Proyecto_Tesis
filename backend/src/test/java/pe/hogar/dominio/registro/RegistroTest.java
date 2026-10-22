@@ -58,6 +58,17 @@ class RegistroTest {
     }
 
     @Test
+    void reconstruyeConLaVersionDescargadaYRechazaUnaVersionInexistente() {
+        Actividad actividad = actividad(Modalidad.PASOS);
+        RegistroPorPasos reconstruido = (RegistroPorPasos) fabrica.reconstruir(actividad, expediente, turno,
+                INICIO, OrigenRegistro.TACTIL, 1);
+        assertEquals(1, reconstruido.getVersionPlantilla());
+        assertEquals(6, reconstruido.getPasosTotales());
+        assertThrows(IllegalArgumentException.class, () -> fabrica.reconstruir(actividad, expediente, turno,
+                INICIO, OrigenRegistro.TACTIL, 99));
+    }
+
+    @Test
     void laAutonomiaEsLaProporcionDePasosPorElPesoDelNivel() {
         RegistroPorPasos r = ducha();
         for (int orden = 1; orden <= 4; orden++) {

@@ -78,7 +78,22 @@ public class ConsultaDatosTurnoJdbc implements ConsultaDatosTurno {
                 .map(nivel -> new DatosTurno.NivelDatos(nivel.codigo(), nivel.nivelNombre(), nivel.descripcion(),
                         nivel.peso(), nivel.orden())).toList();
         DatosTurno.EscalaDatos escala = new DatosTurno.EscalaDatos(primera.version(), primera.nombre(), nivelesDto);
-        return new DatosTurno(expedientes, actividadesResidente, actividadesDto, escala, List.of());
+        List<RegistroFila> registrosRecientes = jdbc.query("SELECT r.id,r.expediente_id,a.codigo,pp.version,r.secuencia_correcta "
+                        + "FROM (SELECT DISTINCT ON (r.expediente_id,r.actividad_id) r.* FROM registro.registro r "
+                        + "WHERE r.estado='CONFIRMADO' AND r.modalidad='PASOS' AND r.oportunidad='SI' AND NOT r.no_quiso "
+                        + "ORDER BY r.expediente_id,r.actividad_id,r.fecha_hora DESC,r.recibido_en DESC,r.id DESC) r "
+                        + "JOIN catalogo.actividad a ON a.id=r.actividad_id JOIN catalogo.plantilla_pasos pp ON pp.id=r.plantilla_id "
+                        + "ORDER BY r.expediente_id,a.codigo",
+                (rs, fila) -> new RegistroFila(rs.getObject("id", UUID.class), rs.getObject("expediente_id", UUID.class),
+                        rs.getString("codigo"), rs.getInt("version"), (Boolean) rs.getObject("secuencia_correcta")));
+        List<DatosTurno.RegistroResumen> ultimosDto = registrosRecientes.stream().map(registro -> {
+            List<DatosTurno.PasoResumen> pasos = jdbc.query("SELECT orden,cumplido FROM registro.registro_paso "
+                            + "WHERE registro_id=? ORDER BY orden",
+                    (rs, fila) -> new DatosTurno.PasoResumen(rs.getInt("orden"), rs.getBoolean("cumplido")), registro.codigo());
+            return new DatosTurno.RegistroResumen(registro.codigo(), registro.expediente(), registro.actividad(),
+                    registro.version(), pasos, registro.secuencia());
+        }).toList();
+        return new DatosTurno(expedientes, actividadesResidente, actividadesDto, escala, ultimosDto);
     }
 
     private static final class ActividadBuilder {
@@ -110,4 +125,5 @@ public class ConsultaDatosTurnoJdbc implements ConsultaDatosTurno {
     private record ActividadFila(String codigo, String nombre, String modalidad, String banda,
                                  boolean secuenciaRelevante, Integer versionPlantilla, Integer orden,
                                  String descripcionPaso, boolean critico) { }
+    private record RegistroFila(UUID codigo, UUID expediente, String actividad, int version, Boolean secuencia) { }
 }

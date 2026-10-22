@@ -42,8 +42,86 @@ class TurnosTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @BeforeEach void limpiarTurnos() {
+        jdbc.update("DELETE FROM registro.registro_campo_modificado");
+        jdbc.update("DELETE FROM registro.registro_paso");
+        jdbc.update("DELETE FROM registro.registro");
         jdbc.update("DELETE FROM registro.turno_encadenado");
         jdbc.update("DELETE FROM registro.turno_declarado");
+    }
+
+    @Test void recibeRegistroCompletoSinDuplicarlo() throws Exception {
+        String token = iniciar("cuidador1");
+        OffsetDateTime ahora = OffsetDateTime.now(LIMA).withNano(0);
+        String tipo = ahora.getHour() < 7 || ahora.getHour() >= 19 ? "N" : ahora.getHour() < 13 ? "M" : "T";
+        String turno = "00000000-0000-0000-0000-000000000121";
+        declarar(turno, solicitud(tipo, ahora, ""), token).andExpect(jsonPath("$.resultado").value("ACEPTADO"));
+        String codigo = "00000000-0000-0000-0000-000000000122";
+        String cuerpo = registroJson(turno, ahora, true, "INDEPENDIENTE", 6);
+        enviarRegistro(codigo, cuerpo, token)
+                .andExpect(status().isOk()).andExpect(jsonPath("$.resultado").value("ACEPTADO"));
+        enviarRegistro(codigo, cuerpo.replace("INDEPENDIENTE", "VERBAL"), token)
+                .andExpect(status().isOk()).andExpect(jsonPath("$.resultado").value("DUPLICADO"));
+        assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM registro.registro WHERE id=?",
+                Integer.class, java.util.UUID.fromString(codigo)));
+        assertEquals(6, jdbc.queryForObject("SELECT count(*) FROM registro.registro_paso WHERE registro_id=?",
+                Integer.class, java.util.UUID.fromString(codigo)));
+        MvcResult descarga = mvc.perform(get("/api/turnos/{codigo}/datos", turno)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ultimosRegistros[0].codigo").value(codigo))
+                .andExpect(jsonPath("$.ultimosRegistros[0].expediente").value("00000000-0000-0000-0000-000000000001"))
+                .andExpect(jsonPath("$.ultimosRegistros[0].actividad").value("A-02"))
+                .andExpect(jsonPath("$.ultimosRegistros[0].versionPlantilla").value(1))
+                .andExpect(jsonPath("$.ultimosRegistros[0].pasos.length()").value(6))
+                .andExpect(jsonPath("$.ultimosRegistros[0].secuenciaCorrecta").value(true)).andReturn();
+        assertFalse(objectMapper.readTree(descarga.getResponse().getContentAsString())
+                .get("ultimosRegistros").get(0).has("nivel"));
+
+        enviarRegistro("00000000-0000-0000-0000-000000000123",
+                registroJson("00000000-0000-0000-0000-000000000199", ahora, true, "INDEPENDIENTE", 6), token)
+                .andExpect(jsonPath("$.resultado").value("RECHAZADO_SIN_TURNO"));
+        String tokenOtro = iniciar("cuidador2");
+        declarar("00000000-0000-0000-0000-000000000124", solicitud(tipo, ahora, ""), tokenOtro)
+                .andExpect(jsonPath("$.resultado").value("ACEPTADO"));
+        enviarRegistro("00000000-0000-0000-0000-000000000125",
+                registroJson("00000000-0000-0000-0000-000000000124", ahora, true, "INDEPENDIENTE", 6), token)
+                .andExpect(jsonPath("$.resultado").value("RECHAZADO_SIN_TURNO"));
+        enviarRegistro("00000000-0000-0000-0000-000000000126",
+                registroJson(turno, ahora.minusDays(2), true, "INDEPENDIENTE", 6), token)
+                .andExpect(jsonPath("$.resultado").value("RECHAZADO_FUERA_DE_VENTANA"));
+        enviarRegistro("00000000-0000-0000-0000-000000000127",
+                registroJson(turno, ahora, true, null, 6), token)
+                .andExpect(jsonPath("$.resultado").value("RECHAZADO_VALIDACION"));
+        enviarRegistro("00000000-0000-0000-0000-000000000128",
+                registroJson(turno, ahora, true, "INDEPENDIENTE", 5), token)
+                .andExpect(jsonPath("$.resultado").value("RECHAZADO_VALIDACION"));
+        enviarRegistro("00000000-0000-0000-0000-000000000129",
+                registroJson(turno, ahora, false, null, 0), token)
+                .andExpect(jsonPath("$.resultado").value("ACEPTADO"));
+        assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM registro.registro_paso WHERE registro_id=?",
+                Integer.class, java.util.UUID.fromString("00000000-0000-0000-0000-000000000129")));
+    }
+
+    private org.springframework.test.web.servlet.ResultActions enviarRegistro(String codigo, String cuerpo, String token)
+            throws Exception {
+        return mvc.perform(put("/api/registros/{codigo}", codigo).header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content(cuerpo));
+    }
+
+    private String registroJson(String turno, OffsetDateTime inicio, boolean oportunidad, String nivel, int totalPasos) {
+        StringBuilder pasos = new StringBuilder("[");
+        for (int i = 1; i <= totalPasos; i++) {
+            if (i > 1) pasos.append(',');
+            pasos.append("{\"orden\":").append(i).append(",\"cumplido\":true}");
+        }
+        pasos.append(']');
+        String nivelJson = nivel == null ? "" : ",\"nivel\":\"" + nivel + "\"";
+        String razon = oportunidad ? "" : ",\"motivoSinOportunidad\":\"FALTAN_RECURSOS\"";
+        return "{\"turno\":\"" + turno + "\",\"expediente\":\"00000000-0000-0000-0000-000000000001\","
+                + "\"actividad\":\"A-02\",\"versionPlantilla\":1,\"inicioCaptura\":\"" + inicio + "\","
+                + "\"finCaptura\":\"" + inicio.plusMinutes(1) + "\",\"origen\":\"TACTIL\",\"oportunidad\":"
+                + oportunidad + razon + ",\"noQuiso\":false" + nivelJson + ",\"pasos\":" + pasos
+                + ",\"secuenciaCorrecta\":true,\"camposModificados\":[]}";
     }
 
     @Test void declaraTurnoReintentaYEncadenaHastaLasSiete() throws Exception {

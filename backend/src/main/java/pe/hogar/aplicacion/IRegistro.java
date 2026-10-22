@@ -8,5 +8,6 @@ import pe.hogar.dominio.residentes.CuentaAcceso;
 /** Declaración de turnos y descarga de datos de captura (DC-06, RF-12, RF-101). */
 public interface IRegistro {
     ResultadoRecepcion declararTurno(TurnoDeclarado turno);
+    ResultadoRecepcion recibirRegistro(RegistroRecibido recibido, CuentaAcceso autor);
     Optional<DatosTurno> obtenerDatosTurno(UUID codigo, CuentaAcceso solicitante);
 }
