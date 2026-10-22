@@ -1,6 +1,8 @@
 package pe.hogar.integracion;
 
 import java.time.OffsetDateTime;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -51,8 +53,8 @@ class TurnosTest {
 
     @Test void recibeRegistroCompletoSinDuplicarlo() throws Exception {
         String token = iniciar("cuidador1");
-        OffsetDateTime ahora = OffsetDateTime.now(LIMA).withNano(0);
-        String tipo = ahora.getHour() < 7 || ahora.getHour() >= 19 ? "N" : ahora.getHour() < 13 ? "M" : "T";
+        OffsetDateTime ahora = inicioEstable();
+        String tipo = "M";
         String turno = "00000000-0000-0000-0000-000000000121";
         declarar(turno, solicitud(tipo, ahora, ""), token).andExpect(jsonPath("$.resultado").value("ACEPTADO"));
         String codigo = "00000000-0000-0000-0000-000000000122";
@@ -105,7 +107,7 @@ class TurnosTest {
     @Test void persisteInicioCapturaEnHoraDeLimaConJVMEnUtc() throws Exception {
         String token = iniciar("cuidador1");
         String turno = "00000000-0000-0000-0000-000000000131";
-        OffsetDateTime inicio = java.time.LocalDate.now(LIMA).atTime(8, 30).atZone(LIMA).toOffsetDateTime();
+        OffsetDateTime inicio = LocalDate.now(LIMA).minusDays(1).atTime(8, 30).atZone(LIMA).toOffsetDateTime();
         declarar(turno, solicitud("M", inicio, ""), token).andExpect(jsonPath("$.resultado").value("ACEPTADO"));
         String registro = "00000000-0000-0000-0000-000000000132";
         enviarRegistro(registro, registroJson(turno, inicio, true, "INDEPENDIENTE", 6), token)
@@ -140,7 +142,7 @@ class TurnosTest {
     @Test void declaraTurnoReintentaYEncadenaHastaLasSiete() throws Exception {
         String token = iniciar("cuidador1");
         String codigo = "00000000-0000-0000-0000-000000000101";
-        String solicitud = solicitud("M", OffsetDateTime.now(LIMA).withNano(0).withOffsetSameInstant(ZoneOffset.UTC), "");
+        String solicitud = solicitud("M", inicioEstable().withOffsetSameInstant(ZoneOffset.UTC), "");
 
         declarar(codigo, solicitud, token).andExpect(status().isOk()).andExpect(jsonPath("$.resultado").value("ACEPTADO"));
         declarar(codigo, solicitud, token).andExpect(status().isOk()).andExpect(jsonPath("$.resultado").value("DUPLICADO"));
@@ -156,16 +158,16 @@ class TurnosTest {
 
     @Test void rechazaDescansoYEncadenamientoNoContiguo() throws Exception {
         String token = iniciar("cuidador1");
-        declarar("00000000-0000-0000-0000-000000000102", solicitud("D", OffsetDateTime.now(LIMA), ""), token)
+        declarar("00000000-0000-0000-0000-000000000102", solicitud("D", inicioEstable(), ""), token)
                 .andExpect(status().isOk()).andExpect(jsonPath("$.resultado").value("RECHAZADO_VALIDACION"));
         declarar("00000000-0000-0000-0000-000000000103",
-                solicitud("M", OffsetDateTime.now(LIMA).withNano(0), "\"N\""), token)
+                solicitud("M", inicioEstable(), "\"N\""), token)
                 .andExpect(status().isOk()).andExpect(jsonPath("$.resultado").value("RECHAZADO_VALIDACION"));
     }
 
     @Test void rechazaSolapamientoDelMismoCuidador() throws Exception {
         String token = iniciar("cuidador1");
-        OffsetDateTime ahora = OffsetDateTime.now(LIMA).withNano(0);
+        OffsetDateTime ahora = inicioEstable();
         OffsetDateTime inicio = ahora.toLocalDate().atTime(7, 0).atZone(LIMA).toOffsetDateTime();
         OffsetDateTime fin = ahora.toLocalDate().atTime(13, 0).atZone(LIMA).toOffsetDateTime();
         jdbc.update("INSERT INTO registro.turno_declarado(id, cuenta_id, tipo, declarado_en, inicio_ventana, fin_ventana) " +
@@ -178,7 +180,7 @@ class TurnosTest {
     @Test void descargaDatosVisiblesSinIdentidadYSoloParaElAutor() throws Exception {
         String codigo = "00000000-0000-0000-0000-000000000106";
         String turnoToken = iniciar("cuidador1");
-        declarar(codigo, solicitud("M", OffsetDateTime.now(LIMA).withNano(0), ""), turnoToken)
+        declarar(codigo, solicitud("M", inicioEstable(), ""), turnoToken)
                 .andExpect(status().isOk()).andExpect(jsonPath("$.resultado").value("ACEPTADO"));
 
         MvcResult resultado = mvc.perform(get("/api/turnos/{codigo}/datos", codigo)
@@ -201,7 +203,7 @@ class TurnosTest {
 
     @Test void coordinadoraNoPuedeDeclararTurno() throws Exception {
         declarar("00000000-0000-0000-0000-000000000107",
-                solicitud("M", OffsetDateTime.now(LIMA).withNano(0), ""), iniciar("coordinadora"))
+                solicitud("M", inicioEstable(), ""), iniciar("coordinadora"))
                 .andExpect(status().isForbidden());
     }
 
@@ -225,5 +227,10 @@ class TurnosTest {
 
     private OffsetDateTime instante(String solicitud) throws Exception {
         return OffsetDateTime.parse(objectMapper.readTree(solicitud).get("declaradoEn").asText());
+    }
+
+    private OffsetDateTime inicioEstable() {
+        return LocalDateTime.of(LocalDate.now(LIMA).minusDays(1), java.time.LocalTime.of(8, 30))
+                .atZone(LIMA).toOffsetDateTime();
     }
 }
