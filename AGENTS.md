@@ -31,6 +31,9 @@ Si una tarea no indica qué requisito y qué diagrama implementa, se pregunta an
 mvn -B -f backend/pom.xml verify                     # pruebas del dominio y del análisis
 psql -v ON_ERROR_STOP=1 -f db/migration/V1__esquema_inicial.sql
 psql -v ON_ERROR_STOP=1 -f db/pruebas/pruebas_esquema.sql
+cd frontend && npm ci
+cd frontend && npm test
+cd frontend && npm run build
 ```
 
 ## Pruebas
