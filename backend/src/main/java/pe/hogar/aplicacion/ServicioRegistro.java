@@ -3,9 +3,11 @@ package pe.hogar.aplicacion;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
+import java.sql.SQLException;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import pe.hogar.dominio.registro.TipoTurno;
@@ -39,7 +41,12 @@ public class ServicioRegistro implements IRegistro {
                     recalculado.getInicioVentana(), recalculado.getFinVentana())) {
                 return ResultadoRecepcion.RECHAZADO_VALIDACION;
             }
-            turnos.insertar(recalculado);
+            try {
+                turnos.insertar(recalculado);
+            } catch (DataAccessException ex) {
+                if (esTurnoSolapado(ex)) return ResultadoRecepcion.RECHAZADO_VALIDACION;
+                throw ex;
+            }
             return ResultadoRecepcion.ACEPTADO;
         }
 
@@ -59,7 +66,13 @@ public class ServicioRegistro implements IRegistro {
                     existente.getInicioVentana(), existente.getFinVentana())) {
                 return ResultadoRecepcion.RECHAZADO_VALIDACION;
             }
-            turnos.agregarEncadenados(existente.getCodigo(), previos.size() + 1, nuevos, existente.getFinVentana());
+            try {
+                turnos.agregarEncadenados(existente.getCodigo(), previos.size() + 1, nuevos,
+                        existente.getFinVentana());
+            } catch (DataAccessException ex) {
+                if (esTurnoSolapado(ex)) return ResultadoRecepcion.RECHAZADO_VALIDACION;
+                throw ex;
+            }
             return ResultadoRecepcion.ACEPTADO;
         } catch (IllegalArgumentException | IllegalStateException ex) {
             return ResultadoRecepcion.RECHAZADO_VALIDACION;
@@ -97,5 +110,13 @@ public class ServicioRegistro implements IRegistro {
 
     private boolean igualPrecisionDb(LocalDateTime izquierda, LocalDateTime derecha) {
         return izquierda.truncatedTo(ChronoUnit.MICROS).equals(derecha.truncatedTo(ChronoUnit.MICROS));
+    }
+
+    private boolean esTurnoSolapado(DataAccessException ex) {
+        for (Throwable causa = ex; causa != null; causa = causa.getCause()) {
+            if (causa instanceof SQLException sql && "23P01".equals(sql.getSQLState())
+                    && sql.getMessage().contains("ex_turno_solapado")) return true;
+        }
+        return false;
     }
 }

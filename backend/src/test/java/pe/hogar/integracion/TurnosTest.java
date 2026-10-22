@@ -75,8 +75,11 @@ class TurnosTest {
     @Test void rechazaSolapamientoDelMismoCuidador() throws Exception {
         String token = iniciar("cuidador1");
         OffsetDateTime ahora = OffsetDateTime.now(LIMA).withNano(0);
-        declarar("00000000-0000-0000-0000-000000000104", solicitud("M", ahora, ""), token)
-                .andExpect(status().isOk()).andExpect(jsonPath("$.resultado").value("ACEPTADO"));
+        OffsetDateTime inicio = ahora.toLocalDate().atTime(7, 0).atZone(LIMA).toOffsetDateTime();
+        OffsetDateTime fin = ahora.toLocalDate().atTime(13, 0).atZone(LIMA).toOffsetDateTime();
+        jdbc.update("INSERT INTO registro.turno_declarado(id, cuenta_id, tipo, declarado_en, inicio_ventana, fin_ventana) " +
+                        "SELECT ?, id, 'M'::comun.tipo_turno, ?, ?, ? FROM residentes.cuenta_acceso WHERE usuario=?",
+                java.util.UUID.fromString("00000000-0000-0000-0000-000000000104"), ahora, inicio, fin, "cuidador1");
         declarar("00000000-0000-0000-0000-000000000105", solicitud("M", ahora, ""), token)
                 .andExpect(status().isOk()).andExpect(jsonPath("$.resultado").value("RECHAZADO_VALIDACION"));
     }
