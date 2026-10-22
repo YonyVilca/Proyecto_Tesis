@@ -1,6 +1,7 @@
 package pe.hogar.dominio.registro;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 import pe.hogar.dominio.catalogo.Actividad;
 import pe.hogar.dominio.residentes.Expediente;
 
@@ -9,9 +10,9 @@ public final class RegistroEvento extends Registro {
 
     private boolean participo = true;
 
-    RegistroEvento(Actividad actividad, Expediente expediente, TurnoDeclarado turno,
+    RegistroEvento(UUID codigo, Actividad actividad, Expediente expediente, TurnoDeclarado turno,
                    LocalDateTime inicioCaptura, OrigenRegistro origen) {
-        super(actividad, expediente, turno, inicioCaptura, origen);
+        super(codigo, actividad, expediente, turno, inicioCaptura, origen);
     }
 
     public void indicarParticipacion(boolean participo) {

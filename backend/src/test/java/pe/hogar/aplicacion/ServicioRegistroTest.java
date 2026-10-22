@@ -96,7 +96,7 @@ class ServicioRegistroTest {
         FakeTurnos ts = new FakeTurnos(); FakeRegistros rs = new FakeRegistros(); FakeCatalogo cat = new FakeCatalogo();
         ServicioRegistro servicio = servicio(ts, rs, cat);
         LocalDateTime inicio = horaActual(); UUID turnoId = UUID.randomUUID();
-        ts.insertar(turno(turnoId, cuidador, TipoTurno.M, inicio));
+        ts.insertar(turno(turnoId, cuidador, tipoPara(inicio), inicio));
         RegistroRecibido correcto = recibido(UUID.randomUUID(), turnoId, inicio, true, "VERBAL", seisPasos());
         assertEquals(ResultadoRecepcion.ACEPTADO, servicio.recibirRegistro(correcto, cuidador));
         assertEquals(ResultadoRecepcion.DUPLICADO, servicio.recibirRegistro(correcto, cuidador));
@@ -134,7 +134,7 @@ class ServicioRegistroTest {
 
     private ServicioRegistro servicio(FakeTurnos turnos) {
         ConsultaDatosTurno consulta = fecha -> new DatosTurno(List.of(), List.of(), List.of(), null, List.of());
-        return new ServicioRegistro(turnos, consulta);
+        return new ServicioRegistro(turnos, consulta, new FakeRegistros(), new FakeCatalogo());
     }
 
     private TurnoDeclarado turno(UUID codigo, CuentaAcceso cuenta, TipoTurno tipo, LocalDateTime hora,
@@ -145,6 +145,11 @@ class ServicioRegistroTest {
     }
 
     private LocalDateTime horaActual() { return LocalDateTime.now(LIMA).minusMinutes(5); }
+
+    private TipoTurno tipoPara(LocalDateTime hora) {
+        return hora.getHour() < 7 || hora.getHour() >= 19 ? TipoTurno.N
+                : hora.getHour() < 13 ? TipoTurno.M : TipoTurno.T;
+    }
 
     private CuentaAcceso cuenta(String codigo, Rol rol) {
         return new CuentaAcceso(codigo, "Nombre Sintético", codigo.toLowerCase(), "hash", rol, true);
@@ -179,7 +184,7 @@ class ServicioRegistroTest {
     private static final class FakeRegistros implements RepositorioRegistros {
         private final Map<UUID, pe.hogar.dominio.registro.Registro> guardados = new HashMap<>();
         @Override public boolean existe(UUID codigo) { return guardados.containsKey(codigo); }
-        @Override public void guardar(UUID codigo, pe.hogar.dominio.registro.Registro registro, Set<CampoPrecarga> campos) { guardados.put(codigo, registro); }
+        @Override public void guardar(pe.hogar.dominio.registro.Registro registro, Set<CampoPrecarga> campos) { guardados.put(registro.getCodigo(), registro); }
     }
     private static final class FakeCatalogo implements RepositorioCatalogoRegistro {
         private final UUID expId = UUID.fromString("00000000-0000-0000-0000-000000000001");

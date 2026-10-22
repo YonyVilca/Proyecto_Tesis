@@ -60,11 +60,13 @@ class RegistroTest {
     @Test
     void reconstruyeConLaVersionDescargadaYRechazaUnaVersionInexistente() {
         Actividad actividad = actividad(Modalidad.PASOS);
-        RegistroPorPasos reconstruido = (RegistroPorPasos) fabrica.reconstruir(actividad, expediente, turno,
+        UUID codigo = UUID.randomUUID();
+        RegistroPorPasos reconstruido = (RegistroPorPasos) fabrica.reconstruir(codigo, actividad, expediente, turno,
                 INICIO, OrigenRegistro.TACTIL, 1);
+        assertEquals(codigo, reconstruido.getCodigo());
         assertEquals(1, reconstruido.getVersionPlantilla());
         assertEquals(6, reconstruido.getPasosTotales());
-        assertThrows(IllegalArgumentException.class, () -> fabrica.reconstruir(actividad, expediente, turno,
+        assertThrows(IllegalArgumentException.class, () -> fabrica.reconstruir(UUID.randomUUID(), actividad, expediente, turno,
                 INICIO, OrigenRegistro.TACTIL, 99));
     }
 

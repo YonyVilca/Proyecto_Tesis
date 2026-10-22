@@ -102,6 +102,19 @@ class TurnosTest {
                 Integer.class, java.util.UUID.fromString("00000000-0000-0000-0000-000000000129")));
     }
 
+    @Test void persisteInicioCapturaEnHoraDeLimaConJVMEnUtc() throws Exception {
+        String token = iniciar("cuidador1");
+        String turno = "00000000-0000-0000-0000-000000000131";
+        OffsetDateTime inicio = java.time.LocalDate.now(LIMA).atTime(8, 30).atZone(LIMA).toOffsetDateTime();
+        declarar(turno, solicitud("M", inicio, ""), token).andExpect(jsonPath("$.resultado").value("ACEPTADO"));
+        String registro = "00000000-0000-0000-0000-000000000132";
+        enviarRegistro(registro, registroJson(turno, inicio, true, "INDEPENDIENTE", 6), token)
+                .andExpect(status().isOk()).andExpect(jsonPath("$.resultado").value("ACEPTADO"));
+        var guardado = jdbc.queryForObject("SELECT inicio_captura AT TIME ZONE 'America/Lima' FROM registro.registro WHERE id=?",
+                java.time.LocalDateTime.class, java.util.UUID.fromString(registro));
+        assertEquals(inicio.toLocalDateTime(), guardado);
+    }
+
     private org.springframework.test.web.servlet.ResultActions enviarRegistro(String codigo, String cuerpo, String token)
             throws Exception {
         return mvc.perform(put("/api/registros/{codigo}", codigo).header("Authorization", "Bearer " + token)

@@ -8,5 +8,5 @@ import pe.hogar.dominio.registro.Registro;
 /** Persistencia transaccional de registros y sus componentes (DC-03, PD-03). */
 public interface RepositorioRegistros {
     boolean existe(UUID codigo);
-    void guardar(UUID codigoRecibido, Registro registro, Set<CampoPrecarga> camposModificados);
+    void guardar(Registro registro, Set<CampoPrecarga> camposModificados);
 }

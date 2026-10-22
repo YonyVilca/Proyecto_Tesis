@@ -38,9 +38,9 @@ public abstract class Registro implements Auditable {
     private String motivoAnulacion;
     private final Set<CampoPrecarga> camposModificados = EnumSet.noneOf(CampoPrecarga.class);
 
-    Registro(Actividad actividad, Expediente expediente, TurnoDeclarado turno, LocalDateTime inicioCaptura,
+    Registro(UUID codigo, Actividad actividad, Expediente expediente, TurnoDeclarado turno, LocalDateTime inicioCaptura,
              OrigenRegistro origen) {
-        this.codigo = UUID.randomUUID();
+        this.codigo = Objects.requireNonNull(codigo);
         this.actividad = Objects.requireNonNull(actividad);
         this.expediente = Objects.requireNonNull(expediente);
         this.turno = Objects.requireNonNull(turno);

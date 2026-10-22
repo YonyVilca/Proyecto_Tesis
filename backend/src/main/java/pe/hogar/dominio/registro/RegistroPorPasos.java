@@ -2,6 +2,7 @@ package pe.hogar.dominio.registro;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 import pe.hogar.dominio.catalogo.Actividad;
 import pe.hogar.dominio.catalogo.PlantillaPasos;
 import pe.hogar.dominio.residentes.Expediente;
@@ -15,9 +16,9 @@ public final class RegistroPorPasos extends Registro {
     private boolean[] pasosPrecargados;
     private Boolean secuenciaPrecargada;
 
-    RegistroPorPasos(Actividad actividad, Expediente expediente, TurnoDeclarado turno,
+    RegistroPorPasos(UUID codigo, Actividad actividad, Expediente expediente, TurnoDeclarado turno,
                      LocalDateTime inicioCaptura, OrigenRegistro origen, PlantillaPasos plantilla) {
-        super(actividad, expediente, turno, inicioCaptura, origen);
+        super(codigo, actividad, expediente, turno, inicioCaptura, origen);
         this.versionPlantilla = plantilla.getVersion();
         this.pasos = plantilla.obtenerPasos().stream().map(RegistroPaso::new).toList();
     }
