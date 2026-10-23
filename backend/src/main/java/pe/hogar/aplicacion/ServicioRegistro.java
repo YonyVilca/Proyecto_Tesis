@@ -145,6 +145,12 @@ public class ServicioRegistro implements IRegistro {
                 .map(turno -> consultaDatos.obtener(turno.getInicioVentana().toLocalDate()));
     }
 
+    /** Recupera el turno cuya ventana contiene el momento, con la tolerancia de RB-11 (RF-02, RF-90, DD-56). */
+    @Transactional(readOnly = true)
+    public Optional<TurnoDeclarado> obtenerTurnoVigente(CuentaAcceso cuenta, LocalDateTime momento) {
+        return turnos.buscarVigente(cuenta, momento, 15);
+    }
+
     private Optional<TurnoDeclarado> recalcular(TurnoDeclarado recibido) {
         if (recibido == null || recibido.getTipo() == TipoTurno.D
                 || recibido.getDeclaradoEn().isAfter(LocalDateTime.now(LIMA).plusMinutes(TOLERANCIA_FUTURA_MINUTOS))) {

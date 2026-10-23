@@ -1,6 +1,7 @@
 package pe.hogar.aplicacion.api;
 
 import java.time.OffsetDateTime;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
@@ -20,7 +21,7 @@ import pe.hogar.aplicacion.Sesion;
 import pe.hogar.dominio.registro.TipoTurno;
 import pe.hogar.dominio.registro.TurnoDeclarado;
 
-/** Declaración de turno y descarga operativa (RF-12, RF-90, RF-101, RF-100, D-66, DD-43). */
+/** Declaración, recuperación de turno y descarga operativa (RF-02, RF-12, RF-90, RF-101, RF-100, D-66, DD-43, DD-56). */
 @RestController
 @RequestMapping("/api/turnos")
 public class TurnosController {
@@ -56,8 +57,24 @@ public class TurnosController {
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
+    /** Consulta el turno vigente del cuidador autenticado (RF-02, RF-90, DD-56). */
+    @GetMapping("/vigente")
+    @PreAuthorize("hasRole('CUIDADOR')")
+    public ResponseEntity<TurnoVigenteRespuesta> obtenerVigente(Authentication authentication) {
+        Sesion sesion = (Sesion) authentication.getPrincipal();
+        return registro.obtenerTurnoVigente(sesion.cuenta(), LocalDateTime.now(LIMA))
+                .map(turno -> ResponseEntity.ok(new TurnoVigenteRespuesta(turno.getCodigo(), turno.getTipo(),
+                        turno.getDeclaradoEn().atZone(LIMA).toOffsetDateTime(), turno.getEncadenados(),
+                        turno.getInicioVentana().atZone(LIMA).toOffsetDateTime(),
+                        turno.getFinVentana().atZone(LIMA).toOffsetDateTime())))
+                .orElseGet(() -> ResponseEntity.noContent().build());
+    }
+
     public record SolicitudTurno(TipoTurno tipo, OffsetDateTime declaradoEn, List<TipoTurno> encadenados) {
         public SolicitudTurno { encadenados = encadenados == null ? List.of() : List.copyOf(encadenados); }
     }
     public record ResultadoRespuesta(ResultadoRecepcion resultado) { }
+    public record TurnoVigenteRespuesta(UUID codigo, TipoTurno tipo, OffsetDateTime declaradoEn,
+                                        List<TipoTurno> encadenados, OffsetDateTime inicioVentana,
+                                        OffsetDateTime finVentana) { }
 }

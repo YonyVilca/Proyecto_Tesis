@@ -207,6 +207,32 @@ class TurnosTest {
                 .andExpect(status().isForbidden());
     }
 
+    @Test void recuperaTurnoVigenteSoloParaSuCuidador() throws Exception {
+        String token1 = iniciar("cuidador1");
+        mvc.perform(get("/api/turnos/vigente").header("Authorization", "Bearer " + token1))
+                .andExpect(status().isNoContent());
+        OffsetDateTime momento = LocalDateTime.now(LIMA).minusMinutes(2).atZone(LIMA).toOffsetDateTime();
+        TipoActual actual = tipoActual(momento);
+        String codigo1 = "00000000-0000-0000-0000-000000000141";
+        declarar(codigo1, solicitud(actual.tipo, momento, ""), token1)
+                .andExpect(jsonPath("$.resultado").value("ACEPTADO"));
+        mvc.perform(get("/api/turnos/vigente").header("Authorization", "Bearer " + token1))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.codigo").value(codigo1))
+                .andExpect(jsonPath("$.tipo").value(actual.tipo));
+        String token2 = iniciar("cuidador2");
+        String codigo2 = "00000000-0000-0000-0000-000000000142";
+        declarar(codigo2, solicitud(actual.tipo, momento, ""), token2)
+                .andExpect(jsonPath("$.resultado").value("ACEPTADO"));
+        mvc.perform(get("/api/turnos/vigente").header("Authorization", "Bearer " + token1))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.codigo").value(codigo1));
+    }
+
+    private record TipoActual(String tipo) { }
+    private TipoActual tipoActual(OffsetDateTime momento) {
+        int hora = momento.atZoneSameInstant(LIMA).getHour();
+        return new TipoActual(hora < 7 || hora >= 19 ? "N" : hora < 13 ? "M" : "T");
+    }
+
     private org.springframework.test.web.servlet.ResultActions declarar(String codigo, String solicitud, String token)
             throws Exception {
         return mvc.perform(put("/api/turnos/{codigo}", codigo).header("Authorization", "Bearer " + token)
