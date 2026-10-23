@@ -3,6 +3,8 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
   server: {
+    host: true,
+    allowedHosts: true,
     proxy: { '/api': 'http://localhost:8080' },
   },
   plugins: [VitePWA({
