@@ -1,6 +1,7 @@
-import { cerrarSesion, declararTurno, ErrorApi, ErrorAutenticacion, ErrorRed, iniciarSesion, obtenerDatosTurno } from '../infraestructura/api';
+import { cerrarSesion, declararTurno, ErrorApi, ErrorAutenticacion, ErrorRed, iniciarSesion, obtenerDatosTurno, obtenerTurnoVigente } from '../infraestructura/api';
 import { AlmacenLocal, type DatosTurnoLocal, type SesionLocal, type TurnoLocal } from '../infraestructura/almacenLocal';
 import { TurnoDeclarado, type TipoTurno } from '../dominio/turno';
+import { recuperarTurnoAlAbrir } from './flujoApertura';
 import './estilos.css';
 
 const app = document.querySelector<HTMLElement>('#app');
@@ -12,11 +13,18 @@ if (app) void iniciarAplicacion();
 async function iniciarAplicacion(): Promise<void> {
   try {
     const sesion = await almacen.obtenerSesion();
-    if (sesion) await mostrarDeclaracion(sesion);
+    if (sesion) await abrirConSesion(sesion);
     else mostrarIngreso();
   } catch {
     mostrarIngreso('No se pudo abrir el almacenamiento local del teléfono.');
   }
+}
+
+async function abrirConSesion(sesion: SesionLocal): Promise<void> {
+  const turno = await recuperarTurnoAlAbrir(sesion, almacen, navigator.onLine,
+    obtenerTurnoVigente, obtenerDatosTurno);
+  if (turno) renderizarFinal(sesion, turno, await almacen.obtenerDatosTurno(), turno.pendiente);
+  else await mostrarDeclaracion(sesion);
 }
 
 function mostrarIngreso(error = ''): void {
@@ -39,7 +47,7 @@ function mostrarIngreso(error = ''): void {
       borrarMensaje(tarjeta);
       try {
         const sesion = await iniciarSesion(usuario.value.trim(), contrasena.value);
-        await mostrarDeclaracion(sesion);
+        await abrirConSesion(sesion);
       } catch (fallo) {
         mensaje(tarjeta, 'error', fallo instanceof ErrorRed ? 'No hay conexión con el servidor.'
           : 'Usuario o contraseña incorrectos');
@@ -122,7 +130,9 @@ async function enviarDeclaracion(datos: {
     try {
       const respuesta = await declararTurno(tipo, declaradoEn, encadenados, turnoReglas.codigo);
       if (respuesta.resultado !== 'ACEPTADO' && respuesta.resultado !== 'DUPLICADO') {
-        throw new ErrorApi(200, `El servidor rechazó el turno: ${respuesta.resultado}`);
+        renderizarFinal(sesion, turnoLocal, await almacen.obtenerDatosTurno(), true,
+          'El servidor no aceptó el turno. Si ya declaraste uno en este horario, vuelve a abrir la aplicación.');
+        return;
       }
       const datosTurno = await obtenerDatosTurno(respuesta.codigo);
       await almacen.guardarDatosTurno(datosTurno);
@@ -158,7 +168,7 @@ function puedeEncadenar(turno: TurnoLocal, tipo: TipoTurno): boolean {
 }
 
 function renderizarFinal(sesion: SesionLocal, turno: Pick<TurnoLocal, 'tipo' | 'inicioVentana' | 'finVentana'>,
-                         datos: DatosTurnoLocal | undefined, sinActualizar: boolean): void {
+                         datos: DatosTurnoLocal | undefined, sinActualizar: boolean, avisoServidor = ''): void {
   if (!app) return;
   app.replaceChildren();
   const encabezado = crear('header', '');
@@ -169,6 +179,7 @@ function renderizarFinal(sesion: SesionLocal, turno: Pick<TurnoLocal, 'tipo' | '
   if (turno.tipo === 'D') mensaje(resumen, 'aviso', 'Descanso: sin registro');
   resumen.append(crear('p', `${formatoHora(turno.inicioVentana)} – ${formatoHora(turno.finVentana)}`));
   if (sinActualizar) mensaje(resumen, 'aviso', 'Datos sin actualizar');
+  if (avisoServidor) mensaje(resumen, 'error', avisoServidor);
   const residentes = crear('section');
   residentes.append(crear('h2', 'Residentes'));
   const lista = crear('ul', '', 'lista-residentes');
@@ -186,9 +197,17 @@ function renderizarFinal(sesion: SesionLocal, turno: Pick<TurnoLocal, 'tipo' | '
   const boton = crear('button', 'Cerrar sesión', 'secundario');
   boton.addEventListener('click', () => {
     boton.disabled = true;
-    void cerrarSesion().then(() => mostrarIngreso()).catch((error: unknown) => {
+    void cerrarSesion().then((revocada) => mostrarIngreso(revocada ? '' : 'La sesión se cerró solo en este teléfono.')).catch((error: unknown) => {
+      if (error instanceof ErrorRed) {
+        void almacen.borrarSesion().then(() => mostrarIngreso('La sesión se cerró solo en este teléfono.'))
+          .catch(() => {
+            boton.disabled = false;
+            mensaje(resumen, 'error', 'No se pudo cerrar sesión en este teléfono.');
+          });
+        return;
+      }
       boton.disabled = false;
-      mensaje(resumen, 'error', error instanceof ErrorRed ? 'No hay conexión; la sesión sigue abierta.' : 'No se pudo cerrar sesión.');
+      mensaje(resumen, 'error', 'No se pudo cerrar sesión.');
     });
   });
   acciones.append(boton);
