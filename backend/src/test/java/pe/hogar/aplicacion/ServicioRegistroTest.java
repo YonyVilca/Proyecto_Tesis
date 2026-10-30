@@ -163,6 +163,10 @@ class ServicioRegistroTest {
         @Override public Optional<TurnoDeclarado> buscarPorCodigo(UUID codigo) {
             return Optional.ofNullable(guardados.get(codigo)).map(FakeTurnos::copiar);
         }
+        @Override public Optional<TurnoDeclarado> buscarVigente(CuentaAcceso cuenta, LocalDateTime momento, int toleranciaMinutos) {
+            return guardados.values().stream().filter(t -> t.getCuenta().getCodigo().equals(cuenta.getCodigo()))
+                    .filter(t -> t.contieneMomento(momento, toleranciaMinutos)).findFirst().map(FakeTurnos::copiar);
+        }
         @Override public boolean existeSolapamiento(UUID codigo, CuentaAcceso cuenta, LocalDateTime inicio, LocalDateTime fin) {
             return solapado;
         }

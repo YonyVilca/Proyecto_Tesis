@@ -43,6 +43,21 @@ public class RepositorioTurnosJdbc implements RepositorioTurnos {
     }
 
     @Override
+    public Optional<TurnoDeclarado> buscarVigente(CuentaAcceso cuenta, LocalDateTime momento, int toleranciaMinutos) {
+        List<TurnoDeclarado> encontrados = jdbc.query("SELECT t.id,t.tipo,t.declarado_en,c.codigo,c.nombre_completo," +
+                        "c.usuario,c.hash_contrasena,c.rol,c.activa FROM registro.turno_declarado t " +
+                        "JOIN residentes.cuenta_acceso c ON c.id=t.cuenta_id WHERE c.codigo=? AND t.tipo<>'D' " +
+                        "AND tstzrange(t.inicio_ventana - (? * interval '1 minute'), " +
+                        "t.fin_ventana + (? * interval '1 minute'), '[]') @> ? ORDER BY t.declarado_en DESC LIMIT 1",
+                this::mapearTurno, cuenta.getCodigo(), toleranciaMinutos, toleranciaMinutos, enLima(momento));
+        if (encontrados.isEmpty()) return Optional.empty();
+        TurnoDeclarado turno = encontrados.getFirst();
+        jdbc.query("SELECT tipo FROM registro.turno_encadenado WHERE turno_id=? ORDER BY orden",
+                rs -> { while (rs.next()) turno.encadenar(TipoTurno.valueOf(rs.getString("tipo"))); }, turno.getCodigo());
+        return Optional.of(turno);
+    }
+
+    @Override
     public boolean existeSolapamiento(UUID codigo, CuentaAcceso cuenta, LocalDateTime inicio, LocalDateTime fin) {
         Boolean existe = jdbc.queryForObject("SELECT EXISTS (SELECT 1 FROM registro.turno_declarado t " +
                         "JOIN residentes.cuenta_acceso c ON c.id=t.cuenta_id WHERE c.codigo=? AND t.id<>? " +

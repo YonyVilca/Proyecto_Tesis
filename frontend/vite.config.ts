@@ -4,9 +4,10 @@ import { VitePWA } from 'vite-plugin-pwa';
 export default defineConfig({
   server: {
     host: true,
-    allowedHosts: true,
+    allowedHosts: ['.trycloudflare.com'],
     proxy: { '/api': 'http://localhost:8080' },
   },
+  preview: { allowedHosts: ['.trycloudflare.com'] },
   plugins: [VitePWA({
     registerType: 'autoUpdate',
     includeAssets: ['favicon.svg'],

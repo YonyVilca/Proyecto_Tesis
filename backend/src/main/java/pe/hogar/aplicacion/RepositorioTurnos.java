@@ -12,6 +12,7 @@ import pe.hogar.dominio.residentes.CuentaAcceso;
 public interface RepositorioTurnos {
     void bloquearDeclaracion(UUID codigo, CuentaAcceso cuenta);
     Optional<TurnoDeclarado> buscarPorCodigo(UUID codigo);
+    Optional<TurnoDeclarado> buscarVigente(CuentaAcceso cuenta, LocalDateTime momento, int toleranciaMinutos);
     boolean existeSolapamiento(UUID codigo, CuentaAcceso cuenta, LocalDateTime inicio, LocalDateTime fin);
     void insertar(TurnoDeclarado turno);
     void agregarEncadenados(UUID codigo, int siguienteOrden, List<TipoTurno> nuevos, LocalDateTime finVentana);

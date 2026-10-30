@@ -1,5 +1,5 @@
 import type { TipoTurno } from '../dominio/turno';
-import { AlmacenLocal, type DatosTurnoLocal, type SesionLocal } from './almacenLocal';
+import { AlmacenLocal, type DatosTurnoLocal, type SesionLocal, type TurnoLocal } from './almacenLocal';
 
 const almacen = new AlmacenLocal();
 
@@ -43,17 +43,27 @@ export async function iniciarSesion(usuario: string, contrasena: string): Promis
 }
 
 /** Revoca la sesión en el servidor y elimina el token local (RF-01, RF-02). */
-export async function cerrarSesion(): Promise<void> {
+export async function cerrarSesion(): Promise<boolean> {
   const sesion = await sesionActiva();
+  if (!navigator.onLine) { await almacen.borrarSesion(); return false; }
   let respuesta: Response;
   try {
     respuesta = await fetch('/api/sesiones/actual', { method: 'DELETE', headers: bearer(sesion.token) });
   } catch { throw new ErrorRed(); }
   if (respuesta.status === 401 || respuesta.status === 204 || respuesta.ok) {
     await almacen.borrarSesion();
-    return;
+    return true;
   }
   throw new ErrorApi(respuesta.status, 'No se pudo cerrar sesión');
+}
+
+/** Consulta el turno vigente asociado a la sesión (RF-02, RF-90, DD-56). */
+export async function obtenerTurnoVigente(): Promise<TurnoLocal | undefined> {
+  const sesion = await sesionActiva();
+  const respuesta = await fetchConToken('/api/turnos/vigente', sesion.token);
+  if (respuesta.status === 204) return undefined;
+  const cuerpo = await respuesta.json() as Omit<TurnoLocal, 'pendiente'>;
+  return { ...cuerpo, pendiente: false };
 }
 
 /** Declara el turno con identificador único y manda la hora civil de Lima (RF-12, RF-90, D-66). */
