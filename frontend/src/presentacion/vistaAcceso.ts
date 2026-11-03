@@ -1,12 +1,41 @@
-import { cerrarSesion, declararTurno, ErrorApi, ErrorAutenticacion, ErrorRed, iniciarSesion, obtenerDatosTurno, obtenerTurnoVigente } from '../infraestructura/api';
+import { cerrarSesion, declararTurno, enviarRegistroPendiente, enviarTurnoPendiente, ErrorApi, ErrorAutenticacion, ErrorRed, iniciarSesion, obtenerDatosTurno, obtenerTurnoVigente } from '../infraestructura/api';
 import { AlmacenLocal, type DatosTurnoLocal, type SesionLocal, type TurnoLocal } from '../infraestructura/almacenLocal';
 import { TurnoDeclarado, type TipoTurno } from '../dominio/turno';
 import { recuperarTurnoAlAbrir } from './flujoApertura';
+import { MotorEnvio } from '../aplicacion/motorEnvio';
+import { validarRegistro, type RegistroDatos } from '../dominio/registro';
 import './estilos.css';
 
 const app = document.querySelector<HTMLElement>('#app');
 const almacen = new AlmacenLocal();
 const TIPOS: TipoTurno[] = ['M', 'T', 'MT', 'GC', 'GD', 'N', 'GN', 'D'];
+const motorEnvio = new MotorEnvio(almacen, { enviarTurno: enviarTurnoPendiente, obtenerDatos: obtenerDatosTurno, enviarRegistro: enviarRegistroPendiente });
+let temporizadorEnvio: number | undefined;
+let turnoMostrado: TurnoLocal | undefined;
+let sesionMostrada: SesionLocal | undefined;
+
+async function procesarPendientes(): Promise<void> {
+  await motorEnvio.enviarPendientes();
+  if (turnoMostrado && sesionMostrada) {
+    const actualizado = await almacen.obtenerTurno(turnoMostrado.codigo);
+    if (actualizado && turnoMostrado.pendiente && !actualizado.pendiente) {
+      const t = actualizado;
+      turnoMostrado = t;
+      renderizarFinal(sesionMostrada, t, await almacen.obtenerDatosTurno(), false,
+        t.rechazado ? 'El servidor no aceptó el turno. Si ya declaraste uno en este horario, vuelve a abrir la aplicación.' : '');
+    }
+    programarSiguienteEnvio();
+  }
+}
+
+function programarSiguienteEnvio(): void {
+  if (temporizadorEnvio !== undefined) window.clearTimeout(temporizadorEnvio);
+  void Promise.all([almacen.obtenerTurnosPendientes(), almacen.obtenerPendientes()]).then(([turnos, registros]) => {
+    if (turnos.length || registros.length) temporizadorEnvio = window.setTimeout(() => void procesarPendientes(), 60_000);
+  });
+}
+
+window.addEventListener('online', () => void procesarPendientes());
 
 if (app) void iniciarAplicacion();
 
@@ -21,9 +50,11 @@ async function iniciarAplicacion(): Promise<void> {
 }
 
 async function abrirConSesion(sesion: SesionLocal): Promise<void> {
+  await motorEnvio.enviarPendientes();
   const turno = await recuperarTurnoAlAbrir(sesion, almacen, navigator.onLine,
     obtenerTurnoVigente, obtenerDatosTurno);
-  if (turno) renderizarFinal(sesion, turno, await almacen.obtenerDatosTurno(), turno.pendiente);
+  if (turno) { turnoMostrado = turno; sesionMostrada = sesion; renderizarFinal(sesion, turno, await almacen.obtenerDatosTurno(), turno.pendiente,
+    turno.rechazado ? 'El servidor no aceptó el turno. Si ya declaraste uno en este horario, vuelve a abrir la aplicación.' : ''); programarSiguienteEnvio(); }
   else await mostrarDeclaracion(sesion);
 }
 
@@ -125,6 +156,7 @@ async function enviarDeclaracion(datos: {
       inicioVentana: turnoReglas.inicioVentana.toISOString(), finVentana: turnoReglas.finVentana.toISOString(),
       pendiente: false,
     };
+    turnoMostrado = turnoLocal; sesionMostrada = sesion;
     await almacen.guardarTurno(turnoLocal);
 
     try {
@@ -180,6 +212,9 @@ function renderizarFinal(sesion: SesionLocal, turno: Pick<TurnoLocal, 'tipo' | '
   resumen.append(crear('p', `${formatoHora(turno.inicioVentana)} – ${formatoHora(turno.finVentana)}`));
   if (sinActualizar) mensaje(resumen, 'aviso', 'Datos sin actualizar');
   if (avisoServidor) mensaje(resumen, 'error', avisoServidor);
+  void almacen.obtenerRegistrosRechazados().then((rechazados) => {
+    if (resumen.isConnected && rechazados.length) mensaje(resumen, 'aviso', `Hay ${rechazados.length} registro(s) rechazado(s) por el servidor.`);
+  });
   const residentes = crear('section');
   residentes.append(crear('h2', 'Residentes'));
   const lista = crear('ul', '', 'lista-residentes');
@@ -194,6 +229,17 @@ function renderizarFinal(sesion: SesionLocal, turno: Pick<TurnoLocal, 'tipo' | '
   if (!datos?.expedientes.length) lista.append(crear('li', 'No hay datos de turno guardados en este teléfono.', 'residente'));
   residentes.append(lista);
   const acciones = crear('section', '', 'acciones');
+  if (datos && turno.tipo !== 'D') {
+    const registrar = crear('button', 'Registrar');
+    registrar.addEventListener('click', () => {
+      const local = turnoMostrado;
+      if (!local || !new TurnoDeclarado(local.codigo, local.tipo, new Date(local.declaradoEn)).contieneMomento(new Date())) {
+        mensaje(resumen, 'error', 'La ventana del turno está cerrada'); return;
+      }
+      mostrarRegistro(sesion, local, datos);
+    });
+    acciones.append(registrar);
+  }
   const boton = crear('button', 'Cerrar sesión', 'secundario');
   boton.addEventListener('click', () => {
     boton.disabled = true;
@@ -213,6 +259,77 @@ function renderizarFinal(sesion: SesionLocal, turno: Pick<TurnoLocal, 'tipo' | '
   acciones.append(boton);
   app.append(encabezado, resumen, residentes, acciones);
 }
+
+interface ActividadUI { codigo: string; nombre: string; modalidad: string; secuenciaRelevante: boolean; plantilla: { version: number; pasos: Array<{ orden: number; descripcion: string }> } }
+interface ResumenUI { expediente: string; actividad: string; versionPlantilla: number; pasos: Array<{ orden: number; cumplido: boolean }>; secuenciaCorrecta?: boolean }
+
+function mostrarRegistro(sesion: SesionLocal, turno: TurnoLocal, datos: DatosTurnoLocal): void {
+  if (!app) return;
+  const actividades = datos.actividades as ActividadUI[];
+  const hoy = new Set(datos.actividadesResidente.filter((ar) => ar.estado !== 'NO_CORRESPONDE').map((ar) => ar.actividad));
+  const opciones = actividades.filter((a) => a.modalidad === 'PASOS' && hoy.has(a.codigo))
+    .sort((a, b) => prioridad(datos, b.codigo) - prioridad(datos, a.codigo));
+  app.replaceChildren();
+  const encabezado = crear('header'); encabezado.append(crear('h1', 'Registrar actividad'), crear('p', 'Completa la observación por residente.', 'subtitulo'));
+  const tarjeta = crear('section', '', 'tarjeta');
+  if (!opciones.length) { mensaje(tarjeta, 'aviso', 'No hay actividades por pasos que correspondan hoy.'); }
+  const formulario = crear('form');
+  const actividad = crear('select');
+  opciones.forEach((a) => { const o = crear('option', a.nombre); o.value = a.codigo; actividad.append(o); });
+  const residente = crear('select');
+  residente.multiple = true;
+  datos.expedientes.filter((r) => datos.actividadesResidente.some((ar) => ar.expediente === r.codigo && ar.estado !== 'NO_CORRESPONDE' && opciones.some((a) => a.codigo === ar.actividad)))
+    .forEach((r, index) => { const o = crear('option', r.nombreVisible); o.value = r.codigo; o.selected = index === 0; residente.append(o); });
+  formulario.append(campo('Actividad', actividad), campo('Residente', residente));
+  const campos = crear('div');
+  const oportunidad = crear('select');
+  [['SI','Sí, hubo oportunidad'], ['NO','No hubo oportunidad']].forEach(([v,t]) => { const o=crear('option',t); o.value=v; oportunidad.append(o); });
+  const motivo = crear('select');
+  const motivos = [['NORMA_DEL_HOGAR','Norma del hogar'],['FALTAN_RECURSOS','Faltan recursos'],['CUIDADOR_CON_OTRO_RESIDENTE','Cuidador con otro residente'],['NO_ESTABA_EN_EL_HOGAR','No estaba en el hogar'],['ENFERMO_O_INDISPUESTO','Enfermo o indispuesto'],['OTRO','Otro']];
+  motivos.forEach(([v,t])=>{const o=crear('option',t);o.value=v;motivo.append(o);});
+  const otro = crear('input'); otro.placeholder='Describe el motivo';
+  const noQuiso = crear('input'); noQuiso.type='checkbox';
+  const nota = crear('input'); nota.placeholder='Nota opcional';
+  const nivel = crear('select');
+  const elegirNivel = crear('option', 'Elige un nivel de apoyo'); elegirNivel.value = ''; elegirNivel.selected = true; nivel.append(elegirNivel);
+  ((datos.escala as { niveles?: Array<{ codigo: string; nombre: string }> } | undefined)?.niveles ?? []).forEach((n)=>{const o=crear('option',n.nombre);o.value=n.codigo;nivel.append(o);});
+  const pasos = crear('fieldset','', 'opciones'); pasos.append(crear('legend','Pasos'));
+  const secuencia = crear('select'); [['true','Correcta'],['false','Incorrecta']].forEach(([v,t])=>{const o=crear('option',t);o.value=v;secuencia.append(o);});
+  let inicioCaptura = new Date();
+  const actualizar = () => {
+    campos.replaceChildren(); pasos.replaceChildren(crear('legend','Pasos'));
+    const a = opciones.find((x)=>x.codigo===actividad.value); if (!a) return;
+    const previous = datos.ultimosRegistros as ResumenUI[];
+    const precarga = previous.find((r)=>r.expediente===residente.value && r.actividad===a.codigo && r.versionPlantilla===a.plantilla.version);
+    a.plantilla.pasos.forEach((p)=>{const c=crear('input'); c.type='checkbox'; c.checked=precarga?.pasos.find((x)=>x.orden===p.orden)?.cumplido ?? false; const l=crear('label');l.append(c,crear('span',p.descripcion)); pasos.append(l);});
+    campos.append(campo('Oportunidad',oportunidad),campo('Motivo',motivo),campo('Otro',otro),campo('Podía y no quiso',noQuiso),campo('Nota',nota),campo('Nivel de apoyo',nivel));
+    if (a.secuenciaRelevante) { secuencia.value=String(precarga?.secuenciaCorrecta ?? true); campos.append(campo('Secuencia',secuencia)); }
+    motivo.hidden=oportunidad.value!=='NO'; otro.hidden=!(oportunidad.value==='NO'&&motivo.value==='OTRO');
+    noQuiso.disabled=oportunidad.value==='NO'; nivel.hidden=oportunidad.value==='NO'||noQuiso.checked;
+  };
+  oportunidad.addEventListener('change',actualizar); motivo.addEventListener('change',actualizar); noQuiso.addEventListener('change',actualizar);
+  actividad.addEventListener('change',()=>{inicioCaptura=new Date();actualizar();}); residente.addEventListener('change',()=>{inicioCaptura=new Date();actualizar();});
+  campos.append(campo('Oportunidad',oportunidad),campo('Motivo',motivo),campo('Otro',otro),campo('Podía y no quiso',noQuiso),campo('Nota',nota),campo('Nivel de apoyo',nivel));
+  formulario.append(campos,pasos);
+  const guardar=crear('button','Confirmar'); guardar.type='submit'; const cancelar=crear('button','Cancelar','secundario'); cancelar.type='button'; cancelar.addEventListener('click',()=>renderizarFinal(sesion,turno,datos,false));
+  formulario.append(guardar,cancelar); formulario.addEventListener('submit',(e)=>{e.preventDefault();void (async()=>{
+    const a=opciones.find((x)=>x.codigo===actividad.value); if(!a)return;
+    const residentesSeleccionados=Array.from(residente.selectedOptions).map((o)=>o.value);
+    if(!residentesSeleccionados.length){mensaje(tarjeta,'error','Elige uno o varios residentes.');return;}
+    const pasosCapturados=Array.from(pasos.querySelectorAll<HTMLInputElement>('input[type=checkbox]')).map((c,i)=>({orden:i+1,cumplido:c.checked}));
+    try {
+      for (const expediente of residentesSeleccionados) {
+        const anterior=(datos.ultimosRegistros as ResumenUI[]).find((r)=>r.expediente===expediente&&r.actividad===a.codigo&&r.versionPlantilla===a.plantilla.version);
+        const registro:RegistroDatos={codigo:crypto.randomUUID(),turno:turno.codigo,expediente,actividad:a.codigo,versionPlantilla:a.plantilla.version,inicioCaptura:inicioCaptura.toISOString(),finCaptura:new Date().toISOString(),origen:'TACTIL',oportunidad:oportunidad.value==='SI',motivoSinOportunidad:oportunidad.value==='NO'?motivo.value as RegistroDatos['motivoSinOportunidad']:undefined,motivoOtro:motivo.value==='OTRO'?otro.value:undefined,noQuiso:oportunidad.value==='SI'&&noQuiso.checked,nota:nota.value||undefined,nivel:oportunidad.value==='SI'&&!noQuiso.checked?nivel.value:undefined,pasos:pasosCapturados,secuenciaCorrecta:a.secuenciaRelevante?secuencia.value==='true':undefined,camposModificados:[...(anterior&&JSON.stringify(anterior.pasos)!==JSON.stringify(pasosCapturados)?['PASOS']:[]),...(anterior&&a.secuenciaRelevante&&anterior.secuenciaCorrecta!==(secuencia.value==='true')?['SECUENCIA']:[]),...(oportunidad.value==='NO'?['OPORTUNIDAD']:[])],pendiente:true};
+        validarRegistro(registro); await almacen.guardarRegistro(registro);
+      }
+      await procesarPendientes(); renderizarFinal(sesion,turno,await almacen.obtenerDatosTurno(),false);
+    } catch(error){mensaje(tarjeta,'error',error instanceof Error?error.message:'No se pudo guardar el registro.');}
+  })();});
+  actualizar(); tarjeta.append(formulario); app.append(encabezado,tarjeta);
+}
+
+function prioridad(datos: DatosTurnoLocal, codigo: string): number { return datos.actividadesResidente.some((a)=>a.actividad===codigo&&a.estado==='PRIORITARIA')?1:0; }
 
 function formatoHora(iso: string): string {
   return new Intl.DateTimeFormat('es-PE', { timeZone: 'America/Lima', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(iso));
