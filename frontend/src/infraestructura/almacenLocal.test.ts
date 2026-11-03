@@ -1,6 +1,7 @@
 import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { AlmacenLocal, type DatosTurnoLocal, type TurnoLocal } from './almacenLocal';
+import type { RegistroDatos } from '../dominio/registro';
 
 const turno: TurnoLocal = {
   codigo: 'turno-sintetico', tipo: 'M', declaradoEn: '2026-03-02T08:30:00-05:00', encadenados: [],
@@ -41,5 +42,21 @@ describe('AlmacenLocal (DC-06, RF-02, RF-101, D-67)', () => {
   it('guarda y recupera la descarga operativa', async () => {
     await almacen.guardarDatosTurno(datos);
     expect(await almacen.obtenerDatosTurno()).toEqual(datos);
+  });
+
+  it('guarda registros pendientes y los suma a la precarga sin nivel de apoyo', async () => {
+    await almacen.guardarDatosTurno(datos);
+    const registro: RegistroDatos = { codigo: 'registro-sintetico', turno: turno.codigo, expediente: 'expediente-sintetico', actividad: 'ACT-1', versionPlantilla: 2,
+      inicioCaptura: '2026-03-02T09:00:00-05:00', finCaptura: '2026-03-02T09:01:00-05:00', origen: 'TACTIL', oportunidad: true,
+      noQuiso: false, nivel: 'NIVEL-3', pasos: [{ orden: 1, cumplido: true }], camposModificados: [], pendiente: true };
+    await almacen.guardarRegistro(registro);
+    expect(await almacen.obtenerPendientes()).toEqual([registro]);
+    expect(await almacen.obtenerDatosTurno()).toMatchObject({ ultimosRegistros: [
+      { codigo: registro.codigo, expediente: registro.expediente, actividad: registro.actividad, versionPlantilla: 2,
+        pasos: [{ orden: 1, cumplido: true }] },
+    ] });
+    expect(JSON.stringify(await almacen.obtenerDatosTurno())).not.toContain('NIVEL-3');
+    await almacen.marcarRegistroEnviado(registro.codigo);
+    expect(await almacen.obtenerPendientes()).toHaveLength(0);
   });
 });

@@ -1,4 +1,5 @@
 import type { TipoTurno } from '../dominio/turno';
+import type { RegistroDatos } from '../dominio/registro';
 import { AlmacenLocal, type DatosTurnoLocal, type SesionLocal, type TurnoLocal } from './almacenLocal';
 
 const almacen = new AlmacenLocal();
@@ -76,6 +77,27 @@ export async function declararTurno(tipo: TipoTurno, declaradoEn: Date, encadena
   });
   const cuerpo = await respuesta.json() as { resultado: string };
   return { codigo, resultado: cuerpo.resultado };
+}
+
+/** Reenvía una declaración pendiente de forma idempotente (RF-29, RF-32, D-66). */
+export async function enviarTurnoPendiente(turno: TurnoLocal): Promise<string> {
+  const sesion = await sesionActiva();
+  const respuesta = await fetchConToken(`/api/turnos/${turno.codigo}`, sesion.token, {
+    method: 'PUT', headers: { ...bearer(sesion.token), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tipo: turno.tipo, declaradoEn: turno.declaradoEn, encadenados: turno.encadenados }),
+  });
+  return (await respuesta.json() as { resultado: string }).resultado;
+}
+
+/** Envía una captura confirmada con su código estable para tolerar reintentos (RF-29, RF-32, D-66). */
+export async function enviarRegistroPendiente(registro: RegistroDatos): Promise<string> {
+  const sesion = await sesionActiva();
+  const { codigo: _codigo, pendiente: _pendiente, rechazado: _rechazado, finCaptura, ...datos } = registro;
+  const respuesta = await fetchConToken(`/api/registros/${registro.codigo}`, sesion.token, {
+    method: 'PUT', headers: { ...bearer(sesion.token), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...datos, finCaptura }),
+  });
+  return (await respuesta.json() as { resultado: string }).resultado;
 }
 
 /** Descarga la configuración operativa asociada al turno declarado (RF-101, DD-43). */
