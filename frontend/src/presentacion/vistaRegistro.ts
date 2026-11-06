@@ -1,18 +1,10 @@
 import { construirRegistro, residentesPara } from '../aplicacion/captura';
 import { validarRegistro, type RegistroDatos } from '../dominio/registro';
 import type { DatosTurnoLocal, TurnoLocal, IAlmacenLocal } from '../infraestructura/almacenLocal';
+import { ETIQUETAS_REGISTRO, MOTIVOS_SIN_OPORTUNIDAD } from './textosRegistro';
 
 interface Actividad { codigo: string; nombre: string; modalidad: string; secuenciaRelevante: boolean; plantilla: { version: number; pasos: Array<{ orden: number; descripcion: string }> } }
 interface Resumen { codigo?: string; expediente: string; actividad: string; versionPlantilla: number; pasos: Array<{ orden: number; cumplido: boolean }>; secuenciaCorrecta?: boolean; oportunidad?: boolean }
-const MOTIVOS: Array<[NonNullable<RegistroDatos['motivoSinOportunidad']>, string]> = [
-  ['NORMA_DEL_HOGAR', 'Norma del hogar'],
-  ['FALTAN_RECURSOS', 'Faltan materiales o recursos'],
-  ['CUIDADOR_CON_OTRO_RESIDENTE', 'El cuidador acompañaba a otro residente'],
-  ['NO_ESTABA_EN_EL_HOGAR', 'No estaba en el hogar'],
-  ['ENFERMO_O_INDISPUESTO', 'Enfermo o indispuesto'],
-  ['OTRO', 'Otro'],
-];
-
 /** Presenta captura secuencial por residente conforme a AD-06, CU-01 y SD-03 (RF-18, RF-31, RF-70, RF-98). */
 export function mostrarVistaRegistro(app: HTMLElement, turno: TurnoLocal, datos: DatosTurnoLocal, almacen: IAlmacenLocal,
   procesarPendientes: () => Promise<void>, alTerminar: () => void | Promise<void>): void {
@@ -56,26 +48,26 @@ export function mostrarVistaRegistro(app: HTMLElement, turno: TurnoLocal, datos:
 
       const oportunidad = el('select');
       for (const [valor, texto] of [['SI', 'Sí'], ['NO', 'No']] as const) { const o = el('option', texto); o.value = valor; oportunidad.append(o); }
-      formulario.append(conEtiqueta('Oportunidad', oportunidad));
+      formulario.append(conEtiqueta(ETIQUETAS_REGISTRO.oportunidad, oportunidad));
 
       const motivo = el('select');
-      MOTIVOS.forEach(([valor, texto]) => { const o = el('option', texto); o.value = valor; motivo.append(o); });
+      MOTIVOS_SIN_OPORTUNIDAD.forEach(([valor, texto]) => { const o = el('option', texto); o.value = valor; motivo.append(o); });
       const otro = el('input'); otro.placeholder = 'Describe el motivo';
-      const campoMotivo = conEtiqueta('Motivo', motivo);
-      const campoOtro = conEtiqueta('Otro', otro);
+      const campoMotivo = conEtiqueta(ETIQUETAS_REGISTRO.motivo, motivo);
+      const campoOtro = conEtiqueta(ETIQUETAS_REGISTRO.otro, otro);
       formulario.append(campoMotivo, campoOtro);
 
       const noQuiso = el('input'); noQuiso.type = 'checkbox';
-      formulario.append(conEtiqueta('Podía hacerlo y no quiso', noQuiso));
+      formulario.append(conEtiqueta(ETIQUETAS_REGISTRO.negativa, noQuiso));
 
       const nivel = el('select');
       const vacio = el('option', 'Elige un nivel de apoyo'); vacio.value = ''; nivel.append(vacio);
       ((datos.escala as { niveles?: Array<{ codigo: string; nombre: string }> }).niveles ?? []).forEach((item) => {
         const o = el('option', item.nombre); o.value = item.codigo; nivel.append(o);
       });
-      formulario.append(conEtiqueta('Nivel de apoyo', nivel));
+      formulario.append(conEtiqueta(ETIQUETAS_REGISTRO.nivel, nivel));
 
-      const grupoPasos = el('fieldset'); grupoPasos.append(el('legend', 'Pasos'));
+      const grupoPasos = el('fieldset'); grupoPasos.append(el('legend', ETIQUETAS_REGISTRO.pasos));
       const pasos = actividadElegida.plantilla.pasos.map((paso) => {
         const check = el('input'); check.type = 'checkbox';
         check.checked = anterior?.pasos.find((p) => p.orden === paso.orden)?.cumplido ?? false;
@@ -86,8 +78,8 @@ export function mostrarVistaRegistro(app: HTMLElement, turno: TurnoLocal, datos:
       const secuencia = el('select');
       for (const [valor, texto] of [['true', 'Correcta'], ['false', 'Incorrecta']] as const) { const o = el('option', texto); o.value = valor; secuencia.append(o); }
       secuencia.value = String(anterior?.secuenciaCorrecta ?? true);
-      const campoSecuencia = conEtiqueta('Secuencia', secuencia); formulario.append(campoSecuencia);
-      const nota = el('input'); nota.placeholder = 'Nota opcional'; formulario.append(conEtiqueta('Nota', nota));
+      const campoSecuencia = conEtiqueta(ETIQUETAS_REGISTRO.secuencia, secuencia); formulario.append(campoSecuencia);
+      const nota = el('input'); nota.placeholder = 'Nota opcional'; formulario.append(conEtiqueta(ETIQUETAS_REGISTRO.nota, nota));
 
       const sincronizar = () => {
         const sinOportunidad = oportunidad.value === 'NO';
