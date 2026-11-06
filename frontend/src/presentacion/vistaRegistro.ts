@@ -1,55 +1,157 @@
-import { construirRegistro } from '../aplicacion/captura';
+import { construirRegistro, residentesPara } from '../aplicacion/captura';
 import { validarRegistro, type RegistroDatos } from '../dominio/registro';
-import { TurnoDeclarado } from '../dominio/turno';
 import type { DatosTurnoLocal, TurnoLocal, IAlmacenLocal } from '../infraestructura/almacenLocal';
 
 interface Actividad { codigo: string; nombre: string; modalidad: string; secuenciaRelevante: boolean; plantilla: { version: number; pasos: Array<{ orden: number; descripcion: string }> } }
 interface Resumen { codigo?: string; expediente: string; actividad: string; versionPlantilla: number; pasos: Array<{ orden: number; cumplido: boolean }>; secuenciaCorrecta?: boolean; oportunidad?: boolean }
+const MOTIVOS: Array<[NonNullable<RegistroDatos['motivoSinOportunidad']>, string]> = [
+  ['NORMA_DEL_HOGAR', 'Norma del hogar'],
+  ['FALTAN_RECURSOS', 'Faltan materiales o recursos'],
+  ['CUIDADOR_CON_OTRO_RESIDENTE', 'El cuidador acompañaba a otro residente'],
+  ['NO_ESTABA_EN_EL_HOGAR', 'No estaba en el hogar'],
+  ['ENFERMO_O_INDISPUESTO', 'Enfermo o indispuesto'],
+  ['OTRO', 'Otro'],
+];
 
-/** Presenta captura secuencial por residente conforme a AD-06, CU-01 y SD-03 (RF-18, RF-32, RF-98). */
+/** Presenta captura secuencial por residente conforme a AD-06, CU-01 y SD-03 (RF-18, RF-31, RF-70, RF-98). */
 export function mostrarVistaRegistro(app: HTMLElement, turno: TurnoLocal, datos: DatosTurnoLocal, almacen: IAlmacenLocal,
-  procesarPendientes: () => Promise<void>, alTerminar: () => void): void {
-  const actividades = datos.actividades as Actividad[];
-  const hoy = new Set(datos.actividadesResidente.filter((x) => x.estado !== 'NO_CORRESPONDE').map((x) => x.actividad));
-  const opciones = actividades.filter((a) => a.modalidad === 'PASOS' && hoy.has(a.codigo))
+  procesarPendientes: () => Promise<void>, alTerminar: () => void | Promise<void>): void {
+  const actividades = (datos.actividades as Actividad[]).filter((a) => a.modalidad === 'PASOS' && residentesPara(datos, a.codigo).length > 0)
     .sort((a, b) => prioridad(datos, b.codigo) - prioridad(datos, a.codigo));
-  app.replaceChildren(); const h = document.createElement('h1'); h.textContent = 'Registrar actividad'; app.append(h);
-  const actividadSelect = document.createElement('select');
-  opciones.forEach((a) => { const o = document.createElement('option'); o.value = a.codigo; o.textContent = a.nombre; actividadSelect.append(o); });
-  const etiqueta = document.createElement('label'); etiqueta.append('Actividad ', actividadSelect); app.append(etiqueta);
-  const lista = document.createElement('fieldset'); const leyenda = document.createElement('legend'); leyenda.textContent = 'Residentes'; lista.append(leyenda);
-  const elegibles = datos.expedientes.filter((r) => datos.actividadesResidente.some((ar) => ar.expediente === r.codigo && ar.estado !== 'NO_CORRESPONDE' && opciones.some((a) => a.codigo === ar.actividad)));
-  elegibles.forEach((r) => { const l = document.createElement('label'); const c = document.createElement('input'); c.type = 'checkbox'; c.value = r.codigo; l.append(c, r.nombreVisible); lista.append(l); }); app.append(lista);
-  const comenzar = document.createElement('button'); comenzar.textContent = 'Comenzar'; app.append(comenzar);
+  app.replaceChildren();
+  const titulo = el('h1', 'Registrar actividad');
+  const actividad = el('select');
+  actividades.forEach((a) => { const opcion = el('option', a.nombre); opcion.value = a.codigo; actividad.append(opcion); });
+  app.append(titulo, conEtiqueta('Actividad', actividad));
+
+  const seleccion = el('fieldset'); seleccion.append(el('legend', 'Residentes'));
+  app.append(seleccion);
+  const cargarResidentes = () => {
+    seleccion.replaceChildren(el('legend', 'Residentes'));
+    residentesPara(datos, actividad.value).forEach((residente) => {
+      const check = el('input'); check.type = 'checkbox'; check.value = residente.codigo;
+      const etiqueta = el('label'); etiqueta.append(check, document.createTextNode(residente.nombreVisible)); seleccion.append(etiqueta);
+    });
+  };
+  actividad.addEventListener('change', cargarResidentes);
+  cargarResidentes();
+  const comenzar = el('button', 'Comenzar'); comenzar.type = 'button'; app.append(comenzar);
   comenzar.onclick = () => {
-    const seleccionados = Array.from(lista.querySelectorAll<HTMLInputElement>('input:checked')).map((c) => c.value);
-    if (!seleccionados.length || !opciones.length) return;
+    const seleccionados = Array.from(seleccion.querySelectorAll<HTMLInputElement>('input:checked')).map((check) => check.value);
+    if (!seleccionados.length || !actividades.length) return;
+    const actividadElegida = actividades.find((a) => a.codigo === actividad.value);
+    if (!actividadElegida) return;
     let indice = 0;
     const siguiente = () => {
-      if (indice >= seleccionados.length) { alTerminar(); return; }
-      const expediente = seleccionados[indice]; const residente = datos.expedientes.find((r) => r.codigo === expediente)!;
-      const actividad = opciones.find((a) => a.codigo === actividadSelect.value)!;
-      const previous = datos.ultimosRegistros as Resumen[];
-      const anterior = previous.find((r) => r.expediente === expediente && r.actividad === actividad.codigo && r.versionPlantilla === actividad.plantilla.version);
-      const inicio = new Date(); app.replaceChildren();
-      const titulo = document.createElement('h1'); titulo.textContent = `Residente ${indice + 1} de ${seleccionados.length}: ${residente.nombreVisible}`; app.append(titulo);
-      const form = document.createElement('form'); app.append(form);
-      const oportunidad = document.createElement('select');
-      for (const [v, t] of [['SI','Sí'],['NO','No hubo oportunidad']] as const) { const o=document.createElement('option');o.value=v;o.textContent=t;oportunidad.append(o); }
-      const noQuiso=document.createElement('input');noQuiso.type='checkbox'; const nivel=document.createElement('select');
-      const n0=document.createElement('option');n0.value='';n0.textContent='Elige nivel';nivel.append(n0);
-      ((datos.escala as {niveles?:Array<{codigo:string;nombre:string}>}).niveles??[]).forEach(n=>{const o=document.createElement('option');o.value=n.codigo;o.textContent=n.nombre;nivel.append(o);});
-      const motivo=document.createElement('select');
-      for(const v of ['NORMA_DEL_HOGAR','FALTAN_RECURSOS','CUIDADOR_CON_OTRO_RESIDENTE','NO_ESTABA_EN_EL_HOGAR','ENFERMO_O_INDISPUESTO','OTRO']){const o=document.createElement('option');o.value=v;o.textContent=v;motivo.append(o);}
-      const otro=document.createElement('input');otro.placeholder='Describe el motivo'; const nota=document.createElement('input');nota.placeholder='Nota opcional';
-      const pasos=actividad.plantilla.pasos.map(p=>{const l=document.createElement('label');const c=document.createElement('input');c.type='checkbox';c.checked=anterior?.pasos.find(x=>x.orden===p.orden)?.cumplido??false;l.append(c,p.descripcion);form.append(l);return c;});
-      const secuencia=document.createElement('select'); for(const [v,t] of [['true','Correcta'],['false','Incorrecta']] as const){const o=document.createElement('option');o.value=v;o.textContent=t;secuencia.append(o);} secuencia.value=String(anterior?.secuenciaCorrecta??true);
-      const sync=()=>{motivo.hidden=oportunidad.value!=='NO';otro.hidden=oportunidad.value!=='NO'||motivo.value!=='OTRO';noQuiso.disabled=oportunidad.value!=='SI';nivel.hidden=oportunidad.value!=='SI'||noQuiso.checked;pasos.forEach(p=>p.disabled=oportunidad.value!=='SI'||noQuiso.checked);secuencia.hidden=!actividad.secuenciaRelevante||oportunidad.value!=='SI'||noQuiso.checked; if(oportunidad.value==='SI') otro.value='';};
-      [oportunidad,noQuiso,motivo].forEach(x=>x.addEventListener('change',sync)); form.append(oportunidad,motivo,otro,noQuiso,nivel,secuencia,nota);sync();
-      const guardar=document.createElement('button');guardar.textContent='Confirmar';form.append(guardar);const cancelar=document.createElement('button');cancelar.type='button';cancelar.textContent='Cancelar';form.append(cancelar);
-      const avanzar=()=>{indice++;siguiente();}; cancelar.onclick=avanzar;
-      form.onsubmit=(e)=>{e.preventDefault();const registro:RegistroDatos=construirRegistro({codigo:crypto.randomUUID(),expediente,actividad:actividad.codigo,versionPlantilla:actividad.plantilla.version,pasos:actividad.plantilla.pasos.map((p,i)=>({orden:p.orden,cumplido:pasos[i].checked})),oportunidad:oportunidad.value==='SI',motivoSinOportunidad:oportunidad.value==='NO'?motivo.value as RegistroDatos['motivoSinOportunidad']:undefined,motivoOtro:otro.value,noQuiso:noQuiso.checked,nota:nota.value,nivel:nivel.value,secuenciaCorrecta:secuencia.value==='true',secuenciaRelevante:actividad.secuenciaRelevante},anterior,turno,inicio,new Date());try{validarRegistro(registro);void almacen.guardarRegistro(registro).then(()=>{void procesarPendientes();avanzar();});}catch(err){form.append(document.createTextNode(err instanceof Error?err.message:'No se pudo guardar.'));}};
-    }; siguiente();
+      if (indice >= seleccionados.length) { void alTerminar(); return; }
+      const expediente = seleccionados[indice];
+      const residente = datos.expedientes.find((item) => item.codigo === expediente);
+      if (!residente) { indice++; siguiente(); return; }
+      const anterior = (datos.ultimosRegistros as Resumen[]).find((r) => r.expediente === expediente
+        && r.actividad === actividadElegida.codigo && r.versionPlantilla === actividadElegida.plantilla.version);
+      app.replaceChildren();
+      app.append(el('h1', `Residente ${indice + 1} de ${seleccionados.length}: ${residente.nombreVisible}`));
+      const inicio = new Date();
+      const formulario = el('form'); app.append(formulario);
+
+      const oportunidad = el('select');
+      for (const [valor, texto] of [['SI', 'Sí'], ['NO', 'No']] as const) { const o = el('option', texto); o.value = valor; oportunidad.append(o); }
+      formulario.append(conEtiqueta('Oportunidad', oportunidad));
+
+      const motivo = el('select');
+      MOTIVOS.forEach(([valor, texto]) => { const o = el('option', texto); o.value = valor; motivo.append(o); });
+      const otro = el('input'); otro.placeholder = 'Describe el motivo';
+      const campoMotivo = conEtiqueta('Motivo', motivo);
+      const campoOtro = conEtiqueta('Otro', otro);
+      formulario.append(campoMotivo, campoOtro);
+
+      const noQuiso = el('input'); noQuiso.type = 'checkbox';
+      formulario.append(conEtiqueta('Podía hacerlo y no quiso', noQuiso));
+
+      const nivel = el('select');
+      const vacio = el('option', 'Elige un nivel de apoyo'); vacio.value = ''; nivel.append(vacio);
+      ((datos.escala as { niveles?: Array<{ codigo: string; nombre: string }> }).niveles ?? []).forEach((item) => {
+        const o = el('option', item.nombre); o.value = item.codigo; nivel.append(o);
+      });
+      formulario.append(conEtiqueta('Nivel de apoyo', nivel));
+
+      const grupoPasos = el('fieldset'); grupoPasos.append(el('legend', 'Pasos'));
+      const pasos = actividadElegida.plantilla.pasos.map((paso) => {
+        const check = el('input'); check.type = 'checkbox';
+        check.checked = anterior?.pasos.find((p) => p.orden === paso.orden)?.cumplido ?? false;
+        const etiqueta = el('label'); etiqueta.append(check, document.createTextNode(paso.descripcion)); grupoPasos.append(etiqueta); return check;
+      });
+      formulario.append(grupoPasos);
+
+      const secuencia = el('select');
+      for (const [valor, texto] of [['true', 'Correcta'], ['false', 'Incorrecta']] as const) { const o = el('option', texto); o.value = valor; secuencia.append(o); }
+      secuencia.value = String(anterior?.secuenciaCorrecta ?? true);
+      const campoSecuencia = conEtiqueta('Secuencia', secuencia); formulario.append(campoSecuencia);
+      const nota = el('input'); nota.placeholder = 'Nota opcional'; formulario.append(conEtiqueta('Nota', nota));
+
+      const sincronizar = () => {
+        const sinOportunidad = oportunidad.value === 'NO';
+        campoMotivo.hidden = !sinOportunidad; campoOtro.hidden = !sinOportunidad || motivo.value !== 'OTRO';
+        noQuiso.disabled = sinOportunidad;
+        nivel.hidden = sinOportunidad || noQuiso.checked;
+        pasos.forEach((paso) => { paso.disabled = sinOportunidad || noQuiso.checked; });
+        campoSecuencia.hidden = !actividadElegida.secuenciaRelevante || sinOportunidad || noQuiso.checked;
+        if (!sinOportunidad) otro.value = '';
+      };
+      oportunidad.addEventListener('change', sincronizar);
+      motivo.addEventListener('change', sincronizar);
+      noQuiso.addEventListener('change', sincronizar);
+      sincronizar();
+
+      const confirmar = el('button', 'Confirmar'); confirmar.type = 'submit';
+      const cancelar = el('button', 'Cancelar'); cancelar.type = 'button';
+      formulario.append(confirmar, cancelar);
+      const aviso = el('p'); aviso.setAttribute('role', 'status');
+      const avanzar = () => { indice++; siguiente(); };
+      cancelar.onclick = avanzar;
+      formulario.onsubmit = (evento) => {
+        evento.preventDefault();
+        if (confirmar.disabled) return;
+        confirmar.disabled = true;
+        try {
+          const registro = construirRegistro({
+            codigo: crypto.randomUUID(), expediente, actividad: actividadElegida.codigo,
+            versionPlantilla: actividadElegida.plantilla.version,
+            pasos: actividadElegida.plantilla.pasos.map((paso, i) => ({ orden: paso.orden, cumplido: pasos[i].checked })),
+            oportunidad: oportunidad.value === 'SI',
+            motivoSinOportunidad: oportunidad.value === 'NO' ? motivo.value as RegistroDatos['motivoSinOportunidad'] : undefined,
+            motivoOtro: otro.value, noQuiso: noQuiso.checked, nota: nota.value, nivel: nivel.value,
+            secuenciaCorrecta: secuencia.value === 'true', secuenciaRelevante: actividadElegida.secuenciaRelevante,
+          }, anterior, turno, inicio, new Date());
+          validarRegistro(registro);
+          void almacen.guardarRegistro(registro).then(() => {
+            app.replaceChildren(el('p', 'Registro guardado en el teléfono'));
+            void procesarPendientes();
+            window.setTimeout(avanzar, 700);
+          }).catch((error: unknown) => {
+            aviso.textContent = error instanceof Error ? error.message : 'No se pudo guardar el registro.';
+            if (!aviso.isConnected) formulario.prepend(aviso);
+            confirmar.disabled = false;
+          });
+        } catch (error) {
+          aviso.textContent = error instanceof Error ? error.message : 'No se pudo guardar el registro.';
+          if (!aviso.isConnected) formulario.prepend(aviso);
+          confirmar.disabled = false;
+        }
+      };
+    };
+    siguiente();
   };
 }
-function prioridad(datos: DatosTurnoLocal, codigo: string): number { return datos.actividadesResidente.some((a) => a.actividad === codigo && a.estado === 'PRIORITARIA') ? 1 : 0; }
+
+function prioridad(datos: DatosTurnoLocal, codigo: string): number {
+  return datos.actividadesResidente.some((item) => item.actividad === codigo && item.estado === 'PRIORITARIA') ? 1 : 0;
+}
+
+function conEtiqueta(texto: string, control: HTMLElement): HTMLLabelElement {
+  const etiqueta = el('label'); etiqueta.append(el('span', texto), control); return etiqueta;
+}
+
+function el<K extends keyof HTMLElementTagNameMap>(tag: K, texto = ''): HTMLElementTagNameMap[K] {
+  const elemento = document.createElement(tag); if (texto) elemento.textContent = texto; return elemento;
+}
