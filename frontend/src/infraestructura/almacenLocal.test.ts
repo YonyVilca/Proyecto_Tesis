@@ -59,4 +59,13 @@ describe('AlmacenLocal (DC-06, RF-02, RF-101, D-67)', () => {
     await almacen.marcarRegistroEnviado(registro.codigo);
     expect(await almacen.obtenerPendientes()).toHaveLength(0);
   });
+
+  it('no reemplaza la precarga con un registro sin oportunidad', async () => {
+    await almacen.guardarDatosTurno({ ...datos, ultimosRegistros: [{ expediente:'expediente-sintetico', actividad:'ACT-1', versionPlantilla:1, pasos:[{orden:1,cumplido:true}] }] });
+    const registro: RegistroDatos = { codigo:'registro-sin-oportunidad', turno:turno.codigo, expediente:'expediente-sintetico', actividad:'ACT-1', versionPlantilla:1,
+      inicioCaptura:'2026-03-02T09:00:00-05:00', finCaptura:'2026-03-02T09:01:00-05:00', origen:'TACTIL', oportunidad:false,
+      motivoSinOportunidad:'FALTAN_RECURSOS', noQuiso:false, pasos:[], camposModificados:[], pendiente:true };
+    await almacen.guardarRegistro(registro);
+    expect(await almacen.obtenerDatosTurno()).toMatchObject({ultimosRegistros:[{pasos:[{orden:1,cumplido:true}]}]});
+  });
 });
