@@ -1,6 +1,12 @@
 /** Tipos permitidos al declarar una jornada (RF-12, RF-90, DD-27). */
-import type { TurnoLocal } from '../infraestructura/almacenLocal';
 export type TipoTurno = 'M' | 'T' | 'MT' | 'GC' | 'GD' | 'N' | 'GN' | 'D';
+
+export interface TurnoReconstruible {
+  codigo: string;
+  tipo: TipoTurno;
+  declaradoEn: string;
+  encadenados: TipoTurno[];
+}
 
 const ZONA_LIMA = 'America/Lima';
 const HORA = { siete: 7, trece: 13, diecinueve: 19 } as const;
@@ -26,7 +32,7 @@ export class TurnoDeclarado {
   }
 
   /** Reconstruye la ventana local incluyendo todos los turnos encadenados (RF-90). */
-  static desdeLocal(turno: TurnoLocal): TurnoDeclarado {
+  static desdeLocal(turno: TurnoReconstruible): TurnoDeclarado {
     const reconstruido = new TurnoDeclarado(turno.codigo, turno.tipo, new Date(turno.declaradoEn));
     for (const tipo of turno.encadenados) reconstruido.encadenar(tipo);
     return reconstruido;
