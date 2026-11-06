@@ -117,6 +117,23 @@ class TurnosTest {
         assertEquals(inicio.toLocalDateTime(), guardado);
     }
 
+    @Test void aceptaRegistrosComoLosEnviaLaPwa() throws Exception {
+        String token = iniciar("cuidador1");
+        OffsetDateTime inicio = inicioEstable().withOffsetSameInstant(ZoneOffset.UTC);
+        String turno = "00000000-0000-0000-0000-000000000141";
+        declarar(turno, solicitud("M", inicio, ""), token).andExpect(jsonPath("$.resultado").value("ACEPTADO"));
+        enviarRegistro("00000000-0000-0000-0000-000000000142", registroJson(turno, inicio, true, "INDEPENDIENTE", 6), token)
+                .andExpect(status().isOk()).andExpect(jsonPath("$.resultado").value("ACEPTADO"));
+        String sinOportunidad = registroJson(turno, inicio, false, null, 0);
+        enviarRegistro("00000000-0000-0000-0000-000000000143", sinOportunidad, token)
+                .andExpect(status().isOk()).andExpect(jsonPath("$.resultado").value("ACEPTADO"));
+        String negativa = registroJson(turno, inicio, true, null, 0)
+                .replace("\"noQuiso\":false", "\"noQuiso\":true").replace(",\"secuenciaCorrecta\":true", "");
+        enviarRegistro("00000000-0000-0000-0000-000000000144", negativa, token)
+                .andExpect(status().isOk()).andExpect(jsonPath("$.resultado").value("ACEPTADO"));
+        org.junit.jupiter.api.Assertions.assertTrue(registroJson(turno, inicio, true, "INDEPENDIENTE", 6).contains("\"inicioCaptura\":\"" + inicio + "\""));
+    }
+
     private org.springframework.test.web.servlet.ResultActions enviarRegistro(String codigo, String cuerpo, String token)
             throws Exception {
         return mvc.perform(put("/api/registros/{codigo}", codigo).header("Authorization", "Bearer " + token)
