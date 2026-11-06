@@ -3,6 +3,7 @@ import { AlmacenLocal, type DatosTurnoLocal, type SesionLocal, type TurnoLocal }
 import { TurnoDeclarado, type TipoTurno } from '../dominio/turno';
 import { recuperarTurnoAlAbrir } from './flujoApertura';
 import { MotorEnvio } from '../aplicacion/motorEnvio';
+import { resumenEnvio } from '../aplicacion/resumenEnvio';
 import { mostrarVistaRegistro } from './vistaRegistro';
 import './estilos.css';
 
@@ -13,6 +14,7 @@ const motorEnvio = new MotorEnvio(almacen, { enviarTurno: enviarTurnoPendiente, 
 let temporizadorEnvio: number | undefined;
 let turnoMostrado: TurnoLocal | undefined;
 let sesionMostrada: SesionLocal | undefined;
+let estadoEnvio: HTMLButtonElement | undefined;
 
 async function procesarPendientes(): Promise<void> {
   try { await motorEnvio.enviarPendientes(); }
@@ -20,10 +22,12 @@ async function procesarPendientes(): Promise<void> {
     if (error instanceof ErrorAutenticacion) {
       if (sesionMostrada) renderizarFinal(sesionMostrada, turnoMostrado ?? { tipo: 'D', inicioVentana: new Date().toISOString(), finVentana: new Date().toISOString() },
         await almacen.obtenerDatosTurno(), true, 'Tu sesión expiró; vuelve a ingresar para enviar lo pendiente');
+      await actualizarEstadoEnvio();
       return;
     }
     throw error;
   }
+  await actualizarEstadoEnvio();
   if (turnoMostrado && sesionMostrada) {
     const actualizado = await almacen.obtenerTurno(turnoMostrado.codigo);
     if (actualizado && turnoMostrado.pendiente && !actualizado.pendiente) {
@@ -44,6 +48,7 @@ function programarSiguienteEnvio(): void {
 }
 
 window.addEventListener('online', () => void procesarPendientes());
+window.addEventListener('offline', () => void actualizarEstadoEnvio());
 
 if (app) void iniciarAplicacion();
 
@@ -58,7 +63,15 @@ async function iniciarAplicacion(): Promise<void> {
 }
 
 async function abrirConSesion(sesion: SesionLocal): Promise<void> {
-  await motorEnvio.enviarPendientes();
+  try {
+    await motorEnvio.enviarPendientes();
+  } catch (error) {
+    if (error instanceof ErrorAutenticacion) {
+      mostrarIngreso('Tu sesión expiró; vuelve a ingresar');
+      return;
+    }
+    if (!(error instanceof ErrorRed)) throw error;
+  }
   const turno = await recuperarTurnoAlAbrir(sesion, almacen, navigator.onLine,
     obtenerTurnoVigente, obtenerDatosTurno);
   if (turno) { turnoMostrado = turno; sesionMostrada = sesion; renderizarFinal(sesion, turno, await almacen.obtenerDatosTurno(), turno.pendiente,
@@ -220,6 +233,10 @@ function renderizarFinal(sesion: SesionLocal, turno: Pick<TurnoLocal, 'tipo' | '
   resumen.append(crear('p', `${formatoHora(turno.inicioVentana)} – ${formatoHora(turno.finVentana)}`));
   if (sinActualizar) mensaje(resumen, 'aviso', 'Datos sin actualizar');
   if (avisoServidor) mensaje(resumen, 'error', avisoServidor);
+  const estado = crear('button', ''); estado.type = 'button'; estado.className = 'estado-envio';
+  estado.setAttribute('role', 'status');
+  estado.addEventListener('click', () => void mostrarMotivosRechazo());
+  estadoEnvio = estado; resumen.append(estado); void actualizarEstadoEnvio();
   void almacen.obtenerRegistrosRechazados().then((rechazados) => {
     if (resumen.isConnected && rechazados.length) mensaje(resumen, 'aviso', `Hay ${rechazados.length} registro(s) rechazado(s) por el servidor.`);
   });
@@ -244,7 +261,9 @@ function renderizarFinal(sesion: SesionLocal, turno: Pick<TurnoLocal, 'tipo' | '
       if (!local || !TurnoDeclarado.desdeLocal(local).contieneMomento(new Date())) {
         mensaje(resumen, 'error', 'La ventana del turno está cerrada'); return;
       }
-      mostrarVistaRegistro(app!, local, datos, almacen, procesarPendientes, () => renderizarFinal(sesion, local, datos, false));
+      mostrarVistaRegistro(app!, local, datos, almacen, procesarPendientes, async () => {
+        renderizarFinal(sesion, local, await almacen.obtenerDatosTurno(), false);
+      });
     });
     acciones.append(registrar);
   }
@@ -266,6 +285,21 @@ function renderizarFinal(sesion: SesionLocal, turno: Pick<TurnoLocal, 'tipo' | '
   });
   acciones.append(boton);
   app.append(encabezado, resumen, residentes, acciones);
+  void actualizarEstadoEnvio();
+}
+
+async function actualizarEstadoEnvio(): Promise<void> {
+  const elemento = estadoEnvio;
+  if (!elemento?.isConnected) return;
+  const [pendientes, rechazados] = await Promise.all([almacen.obtenerPendientes(), almacen.obtenerRegistrosRechazados()]);
+  if (!elemento.isConnected) return;
+  elemento.textContent = resumenEnvio(pendientes.length, rechazados.length);
+  elemento.disabled = rechazados.length === 0;
+}
+
+async function mostrarMotivosRechazo(): Promise<void> {
+  const rechazados = await almacen.obtenerRegistrosRechazados();
+  if (rechazados.length) window.alert(rechazados.map((registro) => `${registro.codigo}: ${registro.rechazado ?? 'Motivo no disponible'}`).join('\n'));
 }
 
 function formatoHora(iso: string): string {
