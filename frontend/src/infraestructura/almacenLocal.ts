@@ -148,10 +148,10 @@ export class AlmacenLocal implements IAlmacenLocal {
     const tx = base.transaction(['registros', 'datos'], 'readwrite');
     await tx.objectStore('registros').put(structuredClone(registro), registro.codigo);
     const datos = await tx.objectStore('datos').get('actual');
-    if (datos) {
+    if (datos && registro.oportunidad && !registro.noQuiso) {
       const resumen = { codigo: registro.codigo, expediente: registro.expediente, actividad: registro.actividad,
         versionPlantilla: registro.versionPlantilla, pasos: registro.pasos.map(({ orden, cumplido }) => ({ orden, cumplido })),
-        secuenciaCorrecta: registro.secuenciaCorrecta };
+        secuenciaCorrecta: registro.secuenciaCorrecta, oportunidad: registro.oportunidad, noQuiso: registro.noQuiso };
       const previos = datos.ultimosRegistros as Array<Record<string, unknown>>;
       const filtrados = previos.filter((r) => !(r.expediente === registro.expediente && r.actividad === registro.actividad));
       await tx.objectStore('datos').put({ ...datos, ultimosRegistros: [resumen, ...filtrados] }, 'actual');
