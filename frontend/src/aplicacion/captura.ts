@@ -1,5 +1,5 @@
 import type { MotivoSinOportunidad, RegistroDatos } from '../dominio/registro';
-import type { TurnoLocal } from '../infraestructura/almacenLocal';
+import type { DatosTurnoLocal, TurnoLocal } from '../infraestructura/almacenLocal';
 
 export interface EntradaCaptura {
   codigo: string; expediente: string; actividad: string; versionPlantilla: number;
@@ -10,6 +10,14 @@ export interface EntradaCaptura {
 export interface PrecargaCaptura {
   codigo?: string; expediente: string; actividad: string; versionPlantilla: number;
   pasos: Array<{ orden: number; cumplido: boolean }>; secuenciaCorrecta?: boolean; oportunidad?: boolean;
+}
+
+/** Residentes a los que corresponde la actividad elegida (AD-06, RF-18). */
+export function residentesPara(datos: DatosTurnoLocal, actividad: string): DatosTurnoLocal['expedientes'] {
+  const asignados = new Set(datos.actividadesResidente
+    .filter((item) => item.actividad === actividad && item.estado !== 'NO_CORRESPONDE')
+    .map((item) => item.expediente));
+  return datos.expedientes.filter((residente) => asignados.has(residente.codigo));
 }
 
 /** Construye un registro para un residente y compara únicamente su precarga compatible (AD-06, RF-18, RF-32, RF-70, RF-98). */
