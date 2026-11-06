@@ -1,4 +1,5 @@
 /** Tipos permitidos al declarar una jornada (RF-12, RF-90, DD-27). */
+import type { TurnoLocal } from '../infraestructura/almacenLocal';
 export type TipoTurno = 'M' | 'T' | 'MT' | 'GC' | 'GD' | 'N' | 'GN' | 'D';
 
 const ZONA_LIMA = 'America/Lima';
@@ -22,6 +23,13 @@ export class TurnoDeclarado {
     const [inicio, fin] = ventana(tipo, fechaLocalLima(declaradoEn));
     this.inicio = inicio;
     this.fin = fin;
+  }
+
+  /** Reconstruye la ventana local incluyendo todos los turnos encadenados (RF-90). */
+  static desdeLocal(turno: TurnoLocal): TurnoDeclarado {
+    const reconstruido = new TurnoDeclarado(turno.codigo, turno.tipo, new Date(turno.declaradoEn));
+    for (const tipo of turno.encadenados) reconstruido.encadenar(tipo);
+    return reconstruido;
   }
 
   /** Instantes Date reales (UTC) equivalentes a las marcas civiles de Lima. */
