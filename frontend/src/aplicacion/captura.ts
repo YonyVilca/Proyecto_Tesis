@@ -29,10 +29,9 @@ export function construirRegistro(entrada: EntradaCaptura, precarga: PrecargaCap
   const pasos = completa ? structuredClone(entrada.pasos) : [];
   const secuenciaCorrecta = completa && entrada.secuenciaRelevante ? entrada.secuenciaCorrecta : undefined;
   const modificados: string[] = [];
-  if (precarga && precarga.expediente === entrada.expediente && precarga.actividad === entrada.actividad
-      && (precarga.oportunidad ?? true) !== entrada.oportunidad) modificados.push('OPORTUNIDAD');
-  if (compatible && JSON.stringify(precarga.pasos) !== JSON.stringify(pasos)) modificados.push('PASOS');
-  if (compatible && entrada.secuenciaRelevante && precarga.secuenciaCorrecta !== secuenciaCorrecta) modificados.push('SECUENCIA');
+  if (!entrada.oportunidad) modificados.push('OPORTUNIDAD');
+  if (completa && compatible && JSON.stringify(precarga.pasos) !== JSON.stringify(pasos)) modificados.push('PASOS');
+  if (completa && compatible && entrada.secuenciaRelevante && precarga.secuenciaCorrecta !== secuenciaCorrecta) modificados.push('SECUENCIA');
   return { codigo: entrada.codigo, turno: turno.codigo, expediente: entrada.expediente, actividad: entrada.actividad,
     versionPlantilla: entrada.versionPlantilla, inicioCaptura: inicio.toISOString(), finCaptura: fin.toISOString(), origen: 'TACTIL',
     oportunidad: entrada.oportunidad, motivoSinOportunidad: entrada.oportunidad ? undefined : entrada.motivoSinOportunidad,

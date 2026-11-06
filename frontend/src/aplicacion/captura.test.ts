@@ -13,9 +13,14 @@ describe('construirRegistro (AD-06, RF-18, RF-32, RF-70, RF-98)',()=>{
   it('con oportunidad conserva todos los pasos y exige nivel en la validación del dominio',()=>expect(crear({}).pasos).toEqual(base.pasos));
   it('elimina el texto Otro al volver a Sí',()=>expect(crear({oportunidad:true,motivoSinOportunidad:'OTRO',motivoOtro:'texto'}).motivoOtro).toBeUndefined());
   it('marca cambios de oportunidad, pasos y secuencia solo con precarga compatible',()=>{
-    expect(crear({oportunidad:false,motivoSinOportunidad:'FALTAN_RECURSOS'}).camposModificados).toEqual(['OPORTUNIDAD','PASOS','SECUENCIA']);
+    expect(crear({oportunidad:false,motivoSinOportunidad:'FALTAN_RECURSOS'}).camposModificados).toEqual(['OPORTUNIDAD']);
+    expect(crear({}).camposModificados).toEqual(['PASOS','SECUENCIA']);
     expect(construirRegistro(base,undefined,turno,new Date(),new Date()).camposModificados).toEqual([]);
+    expect(construirRegistro({...base,oportunidad:false,motivoSinOportunidad:'FALTAN_RECURSOS'},undefined,turno,new Date(),new Date()).camposModificados).toEqual(['OPORTUNIDAD']);
     expect(crear({}, {...anterior,versionPlantilla:2}).camposModificados).toEqual([]);
+  });
+  it('no marca pasos ni secuencia cuando hubo negativa aunque difieran de la precarga',()=>{
+    expect(crear({noQuiso:true}).camposModificados).toEqual([]);
   });
   it('usa la precarga correspondiente a cada residente',()=>{
     const otro=construirRegistro({...base,expediente:'exp-otro'}, {...anterior,expediente:'exp-otro',pasos:[{orden:1,cumplido:false}]},turno,new Date(),new Date());
