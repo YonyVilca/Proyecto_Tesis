@@ -108,7 +108,8 @@ class ServicioRegistroTest {
         assertEquals(ResultadoRecepcion.RECHAZADO_SIN_TURNO,
                 servicio.recibirRegistro(recibido(UUID.randomUUID(), otro, inicio, true, "VERBAL", seisPasos()), cuidador));
         assertEquals(ResultadoRecepcion.RECHAZADO_FUERA_DE_VENTANA,
-                servicio.recibirRegistro(recibido(UUID.randomUUID(), turnoId, inicio.toLocalDate().atStartOfDay(), true, "VERBAL", seisPasos()), cuidador));
+                servicio.recibirRegistro(recibido(UUID.randomUUID(), turnoId,
+                        inicio.toLocalDate().minusDays(1).atStartOfDay(), true, "VERBAL", seisPasos()), cuidador));
         assertEquals(ResultadoRecepcion.RECHAZADO_VALIDACION,
                 servicio.recibirRegistro(recibido(UUID.randomUUID(), turnoId, inicio, true, null, seisPasos()), cuidador));
         assertEquals(ResultadoRecepcion.RECHAZADO_VALIDACION,

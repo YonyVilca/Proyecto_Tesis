@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AlmacenLocal, type TurnoLocal } from '../infraestructura/almacenLocal';
 import type { RegistroDatos } from '../dominio/registro';
 import { MotorEnvio } from './motorEnvio';
+import { ErrorAutenticacion } from '../infraestructura/api';
 
 const turno: TurnoLocal = { codigo: 'turno-sintetico', tipo: 'M', declaradoEn: '2026-03-02T08:30:00-05:00', encadenados: [],
   inicioVentana: '2026-03-02T07:00:00-05:00', finVentana: '2026-03-02T13:00:00-05:00', pendiente: true };
@@ -56,5 +57,47 @@ describe('MotorEnvio (AD-05, RF-29, RF-32)', () => {
     await motor.enviarPendientes();
     expect(enviarRegistro).toHaveBeenCalledTimes(2);
     expect(await almacen.obtenerPendientes()).toHaveLength(0);
+  });
+
+  it('envía registros por inicio de captura y deja visible el rechazo terminal', async () => {
+    await almacen.marcarTurnoEnviado(turno.codigo);
+    const registro = (codigo: string, inicioCaptura: string): RegistroDatos => ({ codigo, turno: turno.codigo, expediente: 'exp-sintetico', actividad: 'ACT-1', versionPlantilla: 1,
+      inicioCaptura, finCaptura: inicioCaptura, origen: 'TACTIL', oportunidad: true, noQuiso: false, nivel: 'NIVEL-1',
+      pasos: [{ orden: 1, cumplido: true }], camposModificados: [], pendiente: true });
+    const segundo = registro('registro-segundo', '2026-03-02T09:02:00-05:00');
+    const primero = registro('registro-primero', '2026-03-02T09:01:00-05:00');
+    await almacen.guardarRegistro(segundo); await almacen.guardarRegistro(primero);
+    const enviarRegistro = vi.fn().mockResolvedValueOnce('RECHAZADO_FUERA_DE_VENTANA').mockResolvedValueOnce('ACEPTADO');
+    const motor = new MotorEnvio(almacen, { enviarTurno: vi.fn(), obtenerDatos: vi.fn(), enviarRegistro });
+    await motor.enviarPendientes();
+    expect(enviarRegistro.mock.calls.map(([r]) => r.codigo)).toEqual([primero.codigo, segundo.codigo]);
+    expect(await almacen.obtenerPendientes()).toHaveLength(0);
+    expect((await almacen.obtenerRegistrosRechazados())[0]).toMatchObject({ codigo: primero.codigo, rechazado: 'RECHAZADO_FUERA_DE_VENTANA' });
+  });
+
+  it('ante RECHAZADO_SIN_TURNO reenvía el turno y luego el registro', async () => {
+    await almacen.marcarTurnoEnviado(turno.codigo);
+    const registro: RegistroDatos = { codigo:'registro-sin-turno',turno:turno.codigo,expediente:'exp-sintetico',actividad:'ACT-1',versionPlantilla:1,
+      inicioCaptura:'2026-03-02T09:00:00-05:00',finCaptura:'2026-03-02T09:01:00-05:00',origen:'TACTIL',oportunidad:true,noQuiso:false,nivel:'NIVEL-1',pasos:[{orden:1,cumplido:true}],camposModificados:[],pendiente:true };
+    await almacen.guardarRegistro(registro);
+    const enviarTurno=vi.fn().mockResolvedValue('ACEPTADO'); const enviarRegistro=vi.fn().mockResolvedValueOnce('RECHAZADO_SIN_TURNO').mockResolvedValueOnce('ACEPTADO');
+    const motor=new MotorEnvio(almacen,{enviarTurno,obtenerDatos:vi.fn().mockResolvedValue({expedientes:[],actividadesResidente:[],actividades:[],escala:{},ultimosRegistros:[]}),enviarRegistro});
+    await motor.enviarPendientes(); expect(await almacen.obtenerPendientes()).toHaveLength(1);
+    await motor.enviarPendientes(); expect(enviarTurno).toHaveBeenCalledOnce(); expect(await almacen.obtenerPendientes()).toHaveLength(0);
+  });
+
+  it('mueve los registros a rechazados cuando el turno se rechaza', async () => {
+    const registro: RegistroDatos = { codigo:'registro-turno-rechazado',turno:turno.codigo,expediente:'exp-sintetico',actividad:'ACT-1',versionPlantilla:1,
+      inicioCaptura:'2026-03-02T09:00:00-05:00',finCaptura:'2026-03-02T09:01:00-05:00',origen:'TACTIL',oportunidad:false,motivoSinOportunidad:'FALTAN_RECURSOS',noQuiso:false,pasos:[],camposModificados:[],pendiente:true };
+    await almacen.guardarRegistro(registro);
+    const motor=new MotorEnvio(almacen,{enviarTurno:vi.fn().mockResolvedValue('RECHAZADO_VALIDACION'),obtenerDatos:vi.fn(),enviarRegistro:vi.fn()});
+    await motor.enviarPendientes(); expect((await almacen.obtenerRegistrosRechazados())[0]).toMatchObject({codigo:registro.codigo,rechazado:'TURNO_RECHAZADO'});
+  });
+
+  it('detiene la pasada al expirar la sesión y conserva los pendientes', async () => {
+    const enviarTurno=vi.fn().mockRejectedValue(new ErrorAutenticacion());
+    const motor=new MotorEnvio(almacen,{enviarTurno,obtenerDatos:vi.fn()});
+    await expect(motor.enviarPendientes()).rejects.toBeInstanceOf(ErrorAutenticacion);
+    expect(await almacen.obtenerTurnosPendientes()).toHaveLength(1);
   });
 });

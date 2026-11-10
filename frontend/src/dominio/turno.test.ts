@@ -40,6 +40,12 @@ describe('TurnoDeclarado (RF-12, RF-90, DD-27)', () => {
     expect(m.contieneMomento(instanteLima(18))).toBe(true);
   });
 
+  it('reconstruye desde el turno local la ventana encadenada', () => {
+    const local = { codigo:'turno-sintetico', tipo:'M' as const, declaradoEn:instanteLima(8).toISOString(), encadenados:['T' as const],
+      inicioVentana:turno('M',7).inicioVentana.toISOString(), finVentana:marcaLocal(19).toISOString(), pendiente:false };
+    expect(TurnoDeclarado.desdeLocal(local).contieneMomento(instanteLima(14))).toBe(true);
+  });
+
   it('rechaza encadenar un turno no contiguo', () => {
     expect(() => turno('M', 7, 5).encadenar('N')).toThrow(RangeError);
   });
