@@ -109,7 +109,7 @@ class ResidentesTest {
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.regla").value("RB-08 datos suficientes"))
                 .andExpect(jsonPath("$.registrosOrigen[0].codigo").value(REGISTRO_SINTETICO.toString()))
-                .andExpect(jsonPath("$.registrosOrigen[0].nivelApoyo").value("VERBAL"))
+                .andExpect(jsonPath("$.registrosOrigen[0].nivelApoyo").value("Apoyo verbal"))
                 .andExpect(jsonPath("$.registrosOrigen[0].pasos.length()").value(6));
     }
 

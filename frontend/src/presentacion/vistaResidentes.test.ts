@@ -12,7 +12,9 @@ const residentes: TarjetaResidenteVisible[] = [
 const fundamento: FundamentoVisible = {
   actividad: 'vestirse', nombreActividad: 'Vestirse', regla: 'RB-08 datos suficientes', umbral: 0.6,
   texto: 'cobertura 40%, se necesita 60%', registrosOrigen: [{ fechaHora: '2026-11-26T12:00:00',
-    oportunidad: 'SI', motivoSinOportunidad: null, noQuiso: false, nivelApoyo: 'N1', participo: null,
+    oportunidad: 'NO', motivoSinOportunidad: 'NORMA_DEL_HOGAR', noQuiso: false, nivelApoyo: null, participo: null,
+    pasos: [] }, { fechaHora: '2026-11-25T12:00:00', oportunidad: 'SI', motivoSinOportunidad: null,
+    noQuiso: false, nivelApoyo: 'Independiente', participo: null,
     pasos: [{ orden: 1, cumplido: true }, { orden: 2, cumplido: false }] }],
 };
 
@@ -38,6 +40,10 @@ describe('vista de residentes (RF-53, RF-99, RF-100)', () => {
     expect(document.querySelector('.fundamento')?.textContent).toContain('cobertura 40%, se necesita 60%');
     expect(document.querySelector('.fundamento')?.textContent).toContain('RB-08 datos suficientes');
     expect(document.querySelector('.fundamento')?.textContent).toContain('1 de 2 pasos cumplidos');
+    expect(document.querySelector('.fundamento')?.textContent).toContain('Norma del hogar');
+    expect(document.querySelector('.fundamento')?.textContent).toContain('Independiente');
+    expect(document.querySelector('.fundamento')?.textContent).not.toContain('NORMA_DEL_HOGAR');
+    expect(document.querySelector('.fundamento')?.textContent).not.toContain('INDEPENDIENTE');
     expect(boton.getAttribute('aria-expanded')).toBe('true');
   });
 });
