@@ -36,7 +36,6 @@ import pe.hogar.dominio.residentes.Expediente;
 public final class ServicioAnalisis {
 
     private static final ZoneId LIMA = ZoneId.of("America/Lima");
-
     private static final String NIVEL_INDEPENDIENTE = "INDEPENDIENTE";
     private static final String VENTANA_N = "analisis.ventana_n";
     private static final String MINIMO_REGISTROS = "analisis.minimo_registros";
@@ -69,8 +68,14 @@ public final class ServicioAnalisis {
     /** SD-07, RF-99. Calcula las actividades vigentes del expediente, ordenadas por código. */
     public List<IndicadorActividad> calcularIndicadores(Expediente expediente, Periodo periodo,
             List<ActividadResidente> plan, List<Registro> registros) {
+        return calcularIndicadores(expediente, periodo, plan, registros, fechaCorte(periodo));
+    }
+
+    /** SD-07, RF-99. Calcula las actividades vigentes del expediente, ordenadas por código. */
+    public List<IndicadorActividad> calcularIndicadores(Expediente expediente, Periodo periodo,
+            List<ActividadResidente> plan, List<Registro> registros, LocalDate corte) {
         java.util.Objects.requireNonNull(expediente);
-        LocalDate corte = fechaCorte(periodo);
+        java.util.Objects.requireNonNull(corte);
         Map<String, ActividadResidente> actividades = new TreeMap<>();
         for (ActividadResidente tramo : plan) {
             if (tramo.getEstado() != EstadoActividadResidente.NO_CORRESPONDE
@@ -79,22 +84,29 @@ public final class ServicioAnalisis {
             }
         }
         return actividades.values().stream()
-                .map(tramo -> analizarActividad(tramo.getActividad(), registros, plan, periodo, true, corte))
+                .map(tramo -> {
+                    String codigo = tramo.getActividad().getCodigo();
+                    List<Registro> registrosActividad = registros.stream()
+                            .filter(registro -> registro.getActividad().getCodigo().equals(codigo)).toList();
+                    List<ActividadResidente> planActividad = plan.stream()
+                            .filter(tramoPlan -> tramoPlan.getActividad().getCodigo().equals(codigo)).toList();
+                    return analizarActividad(tramo.getActividad(), registrosActividad, planActividad, periodo, corte, true);
+                })
                 .toList();
     }
 
     /** AD-02. Indicador de una actividad del residente en el mes. */
     IndicadorActividad analizarActividad(Actividad actividad, List<Registro> registros,
-                                         List<ActividadResidente> plan, Periodo periodo) {
-        return analizarActividad(actividad, registros, plan, periodo, false, fechaCorte(periodo));
+                                         List<ActividadResidente> plan, Periodo periodo, LocalDate corte) {
+        return analizarActividad(actividad, registros, plan, periodo, corte, true);
     }
 
-    private IndicadorActividad analizarActividad(Actividad actividad, List<Registro> registros,
-            List<ActividadResidente> plan, Periodo periodo, boolean incluirOrigenEnSinDatos, LocalDate corte) {
-        List<Registro> serie = filtrarPuntuables(registros, periodo.fin());
+    IndicadorActividad analizarActividad(Actividad actividad, List<Registro> registros,
+            List<ActividadResidente> plan, Periodo periodo, LocalDate corte, boolean incluirOrigenEnSinDatos) {
+        List<Registro> serie = filtrarPuntuables(registros, corte);
         List<Registro> segmento = segmentoVigente(serie);
         List<Registro> ventana = ultimos(serie, entero(VENTANA_N));
-        Cobertura cobertura = calcularCobertura(actividad, registros, plan, periodo);
+        Cobertura cobertura = calcularCobertura(actividad, registros, plan, periodo, corte);
         boolean suficientes = cobertura.getRegistrosEsperados() > 0
                 ? cobertura.isSuficiente() && !ventana.isEmpty()
                 : cobertura.isSuficiente();
@@ -115,9 +127,9 @@ public final class ServicioAnalisis {
         var indicador = new IndicadorActividad(actividad, ventana.size(), avance, autonomia, suficientes,
                 contarNegativas(registros, corte), criticos);
         List<Registro> origenSinDatos = incluirOrigenEnSinDatos
-                ? registrosOrigenSinDatos(serie, plan, periodo, cobertura) : List.of();
+                ? registrosOrigenSinDatos(serie, plan, periodo, cobertura, corte) : List.of();
 
-        Fundamento sinOportunidad = evaluarSinOportunidad(registros, periodo).orElse(null);
+        Fundamento sinOportunidad = evaluarSinOportunidad(registros, periodo, corte).orElse(null);
         Fundamento fundamentoRetroceso = null;
         if (suficientes) {
             indicador.setRegistrosConsecutivosDominio(evaluarDominio(serie));
@@ -141,11 +153,17 @@ public final class ServicioAnalisis {
     /** RB-08, RF-49, AD-04. Cada unidad (día o semana) cuenta a lo sumo su frecuencia. */
     Cobertura calcularCobertura(Actividad actividad, List<Registro> registros, List<ActividadResidente> plan,
                                 Periodo periodo) {
-        int esperados = contarEsperados(actividad, plan, periodo);
-        Set<LocalDate> prioritarios = new HashSet<>(diasEnEstado(plan, periodo, EstadoActividadResidente.PRIORITARIA));
+        return calcularCobertura(actividad, registros, plan, periodo, periodo.fin());
+    }
+
+    private Cobertura calcularCobertura(Actividad actividad, List<Registro> registros, List<ActividadResidente> plan,
+                                        Periodo periodo, LocalDate corte) {
+        int esperados = contarEsperados(actividad, plan, periodo, corte);
+        Set<LocalDate> prioritarios = new HashSet<>(diasEnEstado(plan, periodo, corte, EstadoActividadResidente.PRIORITARIA));
         Map<TipoTurno, Integer> reparto = new EnumMap<>(TipoTurno.class);
         Map<Object, Integer> porUnidad = new HashMap<>();
-        for (Registro r : filtrarPuntuables(registros, periodo.fin())) {
+        List<Registro> seriePuntuable = filtrarPuntuables(registros, corte);
+        for (Registro r : seriePuntuable) {
             LocalDate fecha = r.getFechaHora().toLocalDate();
             if (!periodo.contiene(fecha)) {
                 continue;
@@ -157,7 +175,7 @@ public final class ServicioAnalisis {
         }
         if (esperados == 0) {
             int efectivos = porUnidad.values().stream().mapToInt(Integer::intValue).sum();
-            int enVentana = Math.min(filtrarPuntuables(registros, periodo.fin()).size(), entero(VENTANA_N));
+            int enVentana = Math.min(seriePuntuable.size(), entero(VENTANA_N));
             return new Cobertura(0, efectivos, enVentana >= entero(MINIMO_REGISTROS), reparto);
         }
         int efectivos = porUnidad.values().stream()
@@ -187,8 +205,9 @@ public final class ServicioAnalisis {
     }
 
     /** RB-04, EM-08. Solo los días en estado prioritaria generan expectativa. */
-    private int contarEsperados(Actividad actividad, List<ActividadResidente> estados, Periodo periodo) {
-        List<LocalDate> diasPrioritaria = diasEnEstado(estados, periodo, EstadoActividadResidente.PRIORITARIA);
+    private int contarEsperados(Actividad actividad, List<ActividadResidente> estados, Periodo periodo,
+                                LocalDate corte) {
+        List<LocalDate> diasPrioritaria = diasEnEstado(estados, periodo, corte, EstadoActividadResidente.PRIORITARIA);
         if (diasPrioritaria.isEmpty() || actividad.getBanda() == BandaFrecuencia.ESPORADICA) {
             return 0;
         }
@@ -201,9 +220,10 @@ public final class ServicioAnalisis {
     }
 
     /** RB-12, D-62. Al menos el mínimo y la proporción sobre los registros del mes. */
-    private Optional<Fundamento> evaluarSinOportunidad(List<Registro> registros, Periodo periodo) {
+    private Optional<Fundamento> evaluarSinOportunidad(List<Registro> registros, Periodo periodo, LocalDate corte) {
         List<Registro> delMes = registros.stream()
                 .filter(r -> periodo.contiene(r.getFechaHora().toLocalDate()))
+                .filter(r -> !r.getFechaHora().toLocalDate().isAfter(corte))
                 .filter(r -> r.getEstado() != EstadoRegistro.ANULADO).toList();
         List<Registro> sin = delMes.stream().filter(r -> r.getOportunidad() == Oportunidad.NO).toList();
         if (delMes.isEmpty() || sin.size() < entero(SIN_OPORTUNIDAD_MINIMO)) {
@@ -319,10 +339,10 @@ public final class ServicioAnalisis {
     }
 
     private List<Registro> registrosOrigenSinDatos(List<Registro> serie, List<ActividadResidente> plan,
-            Periodo periodo, Cobertura cobertura) {
+            Periodo periodo, Cobertura cobertura, LocalDate corte) {
         if (cobertura.getRegistrosEsperados() == 0) return ultimos(serie, entero(VENTANA_N));
         Set<LocalDate> diasPrioritarios = new HashSet<>(
-                diasEnEstado(plan, periodo, EstadoActividadResidente.PRIORITARIA));
+                diasEnEstado(plan, periodo, corte, EstadoActividadResidente.PRIORITARIA));
         return serie.stream().filter(r -> periodo.contiene(r.getFechaHora().toLocalDate()))
                 .filter(r -> diasPrioritarios.contains(r.getFechaHora().toLocalDate())).toList();
     }
@@ -340,6 +360,11 @@ public final class ServicioAnalisis {
         return (int) obtenerParametro(clave);
     }
 
+    private static LocalDate fechaCorte(Periodo periodo) {
+        LocalDate hoy = LocalDate.now(LIMA);
+        return hoy.isBefore(periodo.fin()) ? hoy : periodo.fin();
+    }
+
     private static EstadoActividadResidente estadoEnElMes(List<ActividadResidente> plan, LocalDate fecha) {
         EstadoActividadResidente estado = null;
         for (ActividadResidente tramo : plan) {
@@ -350,10 +375,11 @@ public final class ServicioAnalisis {
         return estado;
     }
 
-    private static List<LocalDate> diasEnEstado(List<ActividadResidente> plan, Periodo periodo,
+    private static List<LocalDate> diasEnEstado(List<ActividadResidente> plan, Periodo periodo, LocalDate corte,
                                                 EstadoActividadResidente estado) {
         List<LocalDate> dias = new ArrayList<>();
-        for (LocalDate d = periodo.inicio(); !d.isAfter(periodo.fin()); d = d.plusDays(1)) {
+        LocalDate fin = corte.isBefore(periodo.fin()) ? corte : periodo.fin();
+        for (LocalDate d = periodo.inicio(); !d.isAfter(fin); d = d.plusDays(1)) {
             LocalDate dia = d;
             if (plan.stream().anyMatch(t -> t.getEstado() == estado && vigente(t, dia))) {
                 dias.add(d);
@@ -365,11 +391,6 @@ public final class ServicioAnalisis {
     private static boolean vigente(ActividadResidente tramo, LocalDate fecha) {
         return !fecha.isBefore(tramo.getVigenciaDesde())
                 && (tramo.getVigenciaHasta() == null || !fecha.isAfter(tramo.getVigenciaHasta()));
-    }
-
-    private static LocalDate fechaCorte(Periodo periodo) {
-        LocalDate hoy = LocalDate.now(LIMA);
-        return hoy.isBefore(periodo.fin()) ? hoy : periodo.fin();
     }
 
     private static Object unidad(BandaFrecuencia banda, LocalDate fecha) {

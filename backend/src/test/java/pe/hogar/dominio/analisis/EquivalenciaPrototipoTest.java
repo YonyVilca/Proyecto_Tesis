@@ -93,7 +93,7 @@ class EquivalenciaPrototipoTest {
         String[] mes = v.get("periodo").asText().split("-");
         Periodo periodo = new Periodo(Integer.parseInt(mes[0]), Integer.parseInt(mes[1]));
 
-        IndicadorActividad ind = servicio.analizarActividad(actividad, registros, plan, periodo);
+        IndicadorActividad ind = servicio.analizarActividad(actividad, registros, plan, periodo, periodo.fin(), false);
         Cobertura cob = servicio.calcularCobertura(actividad, registros, plan, periodo);
 
         JsonNode e = v.get("esperado").get("indicador");
