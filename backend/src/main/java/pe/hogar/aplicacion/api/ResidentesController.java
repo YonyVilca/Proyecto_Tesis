@@ -85,7 +85,7 @@ public class ResidentesController {
         return new RegistroOrigenRespuesta(registro.getCodigo(), registro.getFechaHora(),
                 registro.getOportunidad().name(), registro.getMotivoSinOportunidad() == null
                         ? null : registro.getMotivoSinOportunidad().name(), registro.isNoQuiso(),
-                registro.getNivel() == null ? null : registro.getNivel().codigo(), participo, pasos);
+                registro.getNivel() == null ? null : registro.getNivel().nombre(), participo, pasos);
     }
 
     public record TarjetaResidente(UUID codigo, String nombreVisible, String iniciales, String color,

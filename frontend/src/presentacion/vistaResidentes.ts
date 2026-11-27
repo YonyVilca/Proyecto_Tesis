@@ -1,4 +1,5 @@
 import type { FundamentoVisible, TarjetaResidenteVisible } from '../infraestructura/api';
+import { MOTIVOS_SIN_OPORTUNIDAD } from './textosRegistro';
 
 const ESTADOS: Record<TarjetaResidenteVisible['actividades'][number]['estado'], string> = {
   SIN_OPORTUNIDAD: 'Sin oportunidad', SIN_DATOS: 'Sin datos', DOMINA: 'Domina',
@@ -65,9 +66,12 @@ function renderizarFundamento(fundamento: FundamentoVisible): HTMLElement {
   const lista = document.createElement('ul'); lista.className = 'registros-origen';
   for (const registro of fundamento.registrosOrigen) {
     const fecha = new Intl.DateTimeFormat('es-PE', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'America/Lima' }).format(new Date(registro.fechaHora));
-    const motivos: string[] = [registro.oportunidad === 'NO' ? `Sin oportunidad${registro.motivoSinOportunidad ? ` (${registro.motivoSinOportunidad})` : ''}` : 'Con oportunidad'];
+    const textoMotivo = registro.motivoSinOportunidad
+      ? MOTIVOS_SIN_OPORTUNIDAD.find(([codigo]) => codigo === registro.motivoSinOportunidad)?.[1] ?? 'Otro'
+      : '';
+    const motivos: string[] = [registro.oportunidad === 'NO' ? `Sin oportunidad${textoMotivo ? ` (${textoMotivo})` : ''}` : 'Con oportunidad'];
     if (registro.noQuiso) motivos.push('No quiso');
-    if (registro.nivelApoyo) motivos.push(`Nivel de apoyo ${registro.nivelApoyo}`);
+    if (registro.nivelApoyo) motivos.push(registro.nivelApoyo);
     if (registro.participo !== null) motivos.push(registro.participo ? 'Participó' : 'No participó');
     if (registro.pasos.length) motivos.push(`${registro.pasos.filter((paso) => paso.cumplido).length} de ${registro.pasos.length} pasos cumplidos`);
     lista.append(elemento('li', `${fecha} · ${motivos.join(' · ')}`));

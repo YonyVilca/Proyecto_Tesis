@@ -1,6 +1,7 @@
 package pe.hogar.aplicacion;
 
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Service;
@@ -15,6 +16,7 @@ import pe.hogar.dominio.residentes.Expediente;
 @Service
 @Transactional(readOnly = true)
 public class ServicioResidentes implements IResidentes, IAnalisisAvance {
+    private static final ZoneId LIMA = ZoneId.of("America/Lima");
     private final RepositorioExpedientes expedientes;
     private final RepositorioPlanResidente planes;
     private final RepositorioRegistrosAnalisis registros;
@@ -40,6 +42,8 @@ public class ServicioResidentes implements IResidentes, IAnalisisAvance {
         List<ActividadResidente> plan = planes.obtenerActividades(expediente.getCodigo(), periodo.inicio(), periodo.fin());
         var serie = registros.obtenerConfirmados(expediente.getCodigo(), periodo.fin());
         Map<String, Double> valores = parametros.obtenerVigentes();
-        return new ServicioAnalisis(valores).calcularIndicadores(expediente, periodo, plan, serie);
+        LocalDate hoy = LocalDate.now(LIMA);
+        LocalDate corte = hoy.isBefore(periodo.fin()) ? hoy : periodo.fin();
+        return new ServicioAnalisis(valores).calcularIndicadores(expediente, periodo, plan, serie, corte);
     }
 }

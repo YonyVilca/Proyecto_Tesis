@@ -9,7 +9,9 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.LocalDateTime;
+import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -107,8 +109,55 @@ class ResidentesTest {
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.regla").value("RB-08 datos suficientes"))
                 .andExpect(jsonPath("$.registrosOrigen[0].codigo").value(REGISTRO_SINTETICO.toString()))
-                .andExpect(jsonPath("$.registrosOrigen[0].nivelApoyo").value("VERBAL"))
+                .andExpect(jsonPath("$.registrosOrigen[0].nivelApoyo").value("Apoyo verbal"))
                 .andExpect(jsonPath("$.registrosOrigen[0].pasos.length()").value(6));
+    }
+
+    @Test
+    void indicadoresDelEndpointAislanRegistrosDeCadaActividad() throws Exception {
+        LocalDate hoy = LocalDate.now(LIMA);
+        UUID turno = UUID.fromString("00000000-0000-0000-0000-000000000402");
+        insertarActividadEventoYPlan(hoy.withDayOfMonth(1));
+        jdbc.update("UPDATE residentes.actividad_residente ar SET estado='MANTENIMIENTO' "
+                        + "FROM catalogo.actividad a WHERE ar.actividad_id=a.id AND a.codigo='A-02' "
+                        + "AND ar.expediente_id=?", UUID.fromString("00000000-0000-0000-0000-000000000001"));
+        insertarTurno(turno);
+        for (int i = 0; i < 5; i++) {
+            UUID codigo = UUID.fromString("00000000-0000-0000-0000-00000000041" + i);
+            insertarRegistroPasosCompleto(codigo, turno, i);
+        }
+        UUID registroEvento = UUID.fromString("00000000-0000-0000-0000-000000000420");
+        insertarRegistroEvento(registroEvento, turno);
+
+        String token = iniciar("cuidador1");
+        JsonNode residentes = json.readTree(mvc.perform(get("/api/residentes")
+                .header("Authorization", "Bearer " + token)).andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString());
+        JsonNode residente = null;
+        for (JsonNode tarjeta : residentes) {
+            if (tarjeta.get("codigo").asText().equals("00000000-0000-0000-0000-000000000001")) {
+                residente = tarjeta;
+                break;
+            }
+        }
+        org.junit.jupiter.api.Assertions.assertNotNull(residente);
+        JsonNode pasos = null;
+        JsonNode evento = null;
+        for (JsonNode actividad : residente.get("actividades")) {
+            if (actividad.get("codigo").asText().equals("A-02")) pasos = actividad;
+            if (actividad.get("codigo").asText().equals("B-08")) evento = actividad;
+        }
+        org.junit.jupiter.api.Assertions.assertNotNull(pasos);
+        org.junit.jupiter.api.Assertions.assertNotNull(evento);
+        org.junit.jupiter.api.Assertions.assertEquals("DOMINA", pasos.get("estado").asText());
+        org.junit.jupiter.api.Assertions.assertEquals("SIN_DATOS", evento.get("estado").asText());
+
+        mvc.perform(get("/api/residentes/{codigo}/actividades/B-08/fundamento",
+                        "00000000-0000-0000-0000-000000000001")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.registrosOrigen.length()").value(1))
+                .andExpect(jsonPath("$.registrosOrigen[0].codigo").value(registroEvento.toString()));
     }
 
     private String iniciar(String usuario) throws Exception {
@@ -153,5 +202,59 @@ class ResidentesTest {
                         + "JOIN catalogo.actividad a ON a.id=pp.actividad_id "
                         + "WHERE a.codigo='A-02' AND pp.version=1",
                 REGISTRO_SINTETICO);
+    }
+
+    private void insertarActividadEventoYPlan(LocalDate desde) {
+        jdbc.update("INSERT INTO catalogo.actividad(subgrupo_id,codigo,nombre,modalidad,banda) "
+                        + "SELECT id,'B-08','Evento sintético','EVENTO','ESPORADICA' FROM catalogo.subgrupo "
+                        + "WHERE codigo='A1' ON CONFLICT (codigo) DO NOTHING");
+        jdbc.update("INSERT INTO residentes.actividad_residente(id,expediente_id,actividad_id,estado,vigencia_desde) "
+                        + "SELECT gen_random_uuid(),e.id,a.id,'MANTENIMIENTO',? FROM residentes.expediente e "
+                        + "JOIN catalogo.actividad a ON a.codigo='B-08' WHERE e.id=?",
+                desde, UUID.fromString("00000000-0000-0000-0000-000000000001"));
+    }
+
+    private void insertarTurno(UUID turno) {
+        LocalDateTime inicio = LocalDateTime.now(LIMA).minusMinutes(10);
+        TipoTurno tipo = TurnoDeclarado.sugerirTipo(inicio);
+        TurnoDeclarado declarado = new TurnoDeclarado(turno, tipo, CUENTA_SINTETICA, inicio);
+        jdbc.update("INSERT INTO registro.turno_declarado(id,cuenta_id,tipo,declarado_en,inicio_ventana,fin_ventana) "
+                        + "SELECT ?,c.id,?::comun.tipo_turno,?,?,? FROM residentes.cuenta_acceso c WHERE c.codigo='CUI-01'",
+                turno, tipo.name(), declarado.getDeclaradoEn().atZone(LIMA).toOffsetDateTime(),
+                declarado.getInicioVentana().atZone(LIMA).toOffsetDateTime(),
+                declarado.getFinVentana().atZone(LIMA).toOffsetDateTime());
+    }
+
+    private void insertarRegistroPasosCompleto(UUID codigo, UUID turno, int secuencia) {
+        LocalDateTime fecha = LocalDateTime.now(LIMA).minusMinutes(8).plusSeconds(secuencia * 20L);
+        var marca = fecha.atZone(LIMA).toOffsetDateTime();
+        jdbc.update("INSERT INTO registro.registro(id,modalidad,expediente_id,actividad_id,plantilla_id,cuenta_id,"
+                        + "turno_id,nivel_apoyo_id,fecha_hora,inicio_captura,fin_captura,estado,origen,oportunidad,"
+                        + "no_quiso,secuencia_correcta) SELECT ?,'PASOS',e.id,a.id,pp.id,c.id,?,n.id,?,?,?,"
+                        + "'CONFIRMADO','TACTIL','SI',FALSE,TRUE FROM residentes.expediente e "
+                        + "JOIN catalogo.actividad a ON a.codigo='A-02' "
+                        + "JOIN catalogo.plantilla_pasos pp ON pp.actividad_id=a.id AND pp.version=1 "
+                        + "JOIN residentes.cuenta_acceso c ON c.codigo='CUI-01' "
+                        + "JOIN catalogo.nivel_apoyo n ON n.codigo='INDEPENDIENTE' "
+                        + "JOIN catalogo.escala_apoyo es ON es.id=n.escala_id AND es.vigente=TRUE WHERE e.id=?",
+                codigo, turno, marca, marca, marca, UUID.fromString("00000000-0000-0000-0000-000000000001"));
+        jdbc.update("INSERT INTO registro.registro_paso(registro_id,plantilla_id,orden,cumplido) "
+                        + "SELECT ?,pp.id,p.orden,TRUE FROM catalogo.paso p "
+                        + "JOIN catalogo.plantilla_pasos pp ON pp.id=p.plantilla_id "
+                        + "JOIN catalogo.actividad a ON a.id=pp.actividad_id "
+                        + "WHERE a.codigo='A-02' AND pp.version=1", codigo);
+    }
+
+    private void insertarRegistroEvento(UUID codigo, UUID turno) {
+        LocalDateTime fecha = LocalDateTime.now(LIMA).minusMinutes(4);
+        var marca = fecha.atZone(LIMA).toOffsetDateTime();
+        jdbc.update("INSERT INTO registro.registro(id,modalidad,expediente_id,actividad_id,cuenta_id,turno_id,"
+                        + "nivel_apoyo_id,fecha_hora,inicio_captura,fin_captura,estado,origen,oportunidad,no_quiso,participo) "
+                        + "SELECT ?,'EVENTO',e.id,a.id,c.id,?,n.id,?,?,?,'CONFIRMADO','TACTIL','SI',FALSE,TRUE "
+                        + "FROM residentes.expediente e JOIN catalogo.actividad a ON a.codigo='B-08' "
+                        + "JOIN residentes.cuenta_acceso c ON c.codigo='CUI-01' "
+                        + "JOIN catalogo.nivel_apoyo n ON n.codigo='INDEPENDIENTE' "
+                        + "JOIN catalogo.escala_apoyo es ON es.id=n.escala_id AND es.vigente=TRUE WHERE e.id=?",
+                codigo, turno, marca, marca, marca, UUID.fromString("00000000-0000-0000-0000-000000000001"));
     }
 }
