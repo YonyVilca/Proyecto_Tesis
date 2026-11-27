@@ -1,7 +1,6 @@
 package pe.hogar.dominio.analisis;
 
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.time.temporal.IsoFields;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -35,7 +34,6 @@ import pe.hogar.dominio.residentes.Expediente;
  */
 public final class ServicioAnalisis {
 
-    private static final ZoneId LIMA = ZoneId.of("America/Lima");
     private static final String NIVEL_INDEPENDIENTE = "INDEPENDIENTE";
     private static final String VENTANA_N = "analisis.ventana_n";
     private static final String MINIMO_REGISTROS = "analisis.minimo_registros";
@@ -65,13 +63,7 @@ public final class ServicioAnalisis {
         this.retroceso = retroceso;
     }
 
-    /** SD-07, RF-99. Calcula las actividades vigentes del expediente, ordenadas por código. */
-    public List<IndicadorActividad> calcularIndicadores(Expediente expediente, Periodo periodo,
-            List<ActividadResidente> plan, List<Registro> registros) {
-        return calcularIndicadores(expediente, periodo, plan, registros, fechaCorte(periodo));
-    }
-
-    /** SD-07, RF-99. Calcula las actividades vigentes del expediente, ordenadas por código. */
+    /** SD-07, RF-99. Calcula las actividades vigentes hasta el corte, ordenadas por código. */
     public List<IndicadorActividad> calcularIndicadores(Expediente expediente, Periodo periodo,
             List<ActividadResidente> plan, List<Registro> registros, LocalDate corte) {
         java.util.Objects.requireNonNull(expediente);
@@ -358,11 +350,6 @@ public final class ServicioAnalisis {
 
     private int entero(String clave) {
         return (int) obtenerParametro(clave);
-    }
-
-    private static LocalDate fechaCorte(Periodo periodo) {
-        LocalDate hoy = LocalDate.now(LIMA);
-        return hoy.isBefore(periodo.fin()) ? hoy : periodo.fin();
     }
 
     private static EstadoActividadResidente estadoEnElMes(List<ActividadResidente> plan, LocalDate fecha) {
