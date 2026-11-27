@@ -40,3 +40,25 @@ button:disabled { opacity: .65; }
 .iniciales { display: grid; place-items: center; width: 52px; height: 52px; flex: 0 0 52px; border-radius: 50%; color: #17231d; font-weight: 800; }
 .nombre { font-weight: 700; }
 .acciones { margin-top: 28px; }
+.tablero-contenedor { margin-top: 24px; }
+.tablero-residentes { display: grid; gap: 14px; }
+.tablero-residentes > h2 { margin: 8px 0 0; }
+.tarjeta-residente { padding: 18px; background: white; border: 1px solid #d6e0d8; border-radius: 16px; box-shadow: 0 4px 18px #173e2d0d; }
+.identidad-residente { display: flex; align-items: center; gap: 14px; }
+.identidad-residente h3 { margin: 0; font-size: 1.15rem; }
+.actividad-residente { margin-top: 12px; }
+.actividad-estado { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 60px; padding: 10px 12px; background: #f8faf8; border: 1px solid #d6e0d8; color: #17231d; text-align: left; }
+.estado { display: inline-block; padding: 5px 9px; border-radius: 999px; font-size: .83rem; font-weight: 750; white-space: nowrap; }
+.estado-sin_oportunidad { color: #553b08; background: #fff2d1; }
+.estado-sin_datos { color: #4c5b52; background: #e9eeeb; }
+.estado-domina { color: #174b3a; background: #dcefe3; }
+.estado-en_trabajo { color: #174b3a; background: #e2edf5; }
+.estado-retrocede, .estado-estancada { color: #74411a; background: #f8e7d8; }
+.negativas { margin: 8px 4px; color: #4c5b52; font-size: .88rem; }
+.fundamento { padding: 12px 14px; border: 1px solid #d6e0d8; border-top: 0; border-radius: 0 0 12px 12px; background: #fbfcfb; }
+.fundamento p { margin: 6px 0; }
+.fundamento h4 { margin: 16px 0 6px; }
+.registros-origen { padding-left: 22px; }
+.registros-origen li { margin: 8px 0; line-height: 1.45; }
+.sin-actividades { color: #4c5b52; }
+.cargando { padding: 18px; color: #4c5b52; }

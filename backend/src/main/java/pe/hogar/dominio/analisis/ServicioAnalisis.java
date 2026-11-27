@@ -1,6 +1,7 @@
 package pe.hogar.dominio.analisis;
 
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.temporal.IsoFields;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -26,12 +27,15 @@ import pe.hogar.dominio.registro.RegistroPorPasos;
 import pe.hogar.dominio.registro.TipoTurno;
 import pe.hogar.dominio.residentes.ActividadResidente;
 import pe.hogar.dominio.residentes.EstadoActividadResidente;
+import pe.hogar.dominio.residentes.Expediente;
 
 /**
  * Cálculo del análisis de avance (EM v1.1, AD-02). Las estrategias de la ampliación se inyectan o no
  * (PD-11, PD-16): sin ellas no hay pendiente ni retroceso, y el estado queda en los cuatro del núcleo.
  */
 public final class ServicioAnalisis {
+
+    private static final ZoneId LIMA = ZoneId.of("America/Lima");
 
     private static final String NIVEL_INDEPENDIENTE = "INDEPENDIENTE";
     private static final String VENTANA_N = "analisis.ventana_n";
@@ -62,9 +66,31 @@ public final class ServicioAnalisis {
         this.retroceso = retroceso;
     }
 
+    /** SD-07, RF-99. Calcula las actividades vigentes del expediente, ordenadas por código. */
+    public List<IndicadorActividad> calcularIndicadores(Expediente expediente, Periodo periodo,
+            List<ActividadResidente> plan, List<Registro> registros) {
+        java.util.Objects.requireNonNull(expediente);
+        LocalDate corte = fechaCorte(periodo);
+        Map<String, ActividadResidente> actividades = new TreeMap<>();
+        for (ActividadResidente tramo : plan) {
+            if (tramo.getEstado() != EstadoActividadResidente.NO_CORRESPONDE
+                    && vigente(tramo, corte)) {
+                actividades.put(tramo.getActividad().getCodigo(), tramo);
+            }
+        }
+        return actividades.values().stream()
+                .map(tramo -> analizarActividad(tramo.getActividad(), registros, plan, periodo, true, corte))
+                .toList();
+    }
+
     /** AD-02. Indicador de una actividad del residente en el mes. */
     IndicadorActividad analizarActividad(Actividad actividad, List<Registro> registros,
                                          List<ActividadResidente> plan, Periodo periodo) {
+        return analizarActividad(actividad, registros, plan, periodo, false, fechaCorte(periodo));
+    }
+
+    private IndicadorActividad analizarActividad(Actividad actividad, List<Registro> registros,
+            List<ActividadResidente> plan, Periodo periodo, boolean incluirOrigenEnSinDatos, LocalDate corte) {
         List<Registro> serie = filtrarPuntuables(registros, periodo.fin());
         List<Registro> segmento = segmentoVigente(serie);
         List<Registro> ventana = ultimos(serie, entero(VENTANA_N));
@@ -87,7 +113,9 @@ public final class ServicioAnalisis {
         boolean criticos = actividad.obtenerPlantillaVigente()
                 .map(p -> p.obtenerPasos().stream().anyMatch(Paso::critico)).orElse(false);
         var indicador = new IndicadorActividad(actividad, ventana.size(), avance, autonomia, suficientes,
-                contarNegativas(registros, periodo.fin()), criticos);
+                contarNegativas(registros, corte), criticos);
+        List<Registro> origenSinDatos = incluirOrigenEnSinDatos
+                ? registrosOrigenSinDatos(serie, plan, periodo, cobertura) : List.of();
 
         Fundamento sinOportunidad = evaluarSinOportunidad(registros, periodo).orElse(null);
         Fundamento fundamentoRetroceso = null;
@@ -106,7 +134,7 @@ public final class ServicioAnalisis {
             }
         }
         determinarEstado(indicador, sinOportunidad, fundamentoRetroceso,
-                estadoEnElMes(plan, periodo), serie, cobertura);
+                estadoEnElMes(plan, corte), serie, cobertura, origenSinDatos);
         return indicador;
     }
 
@@ -242,7 +270,7 @@ public final class ServicioAnalisis {
      */
     private Fundamento determinarEstado(IndicadorActividad ind, Fundamento sinOportunidad, Fundamento retroceso,
                                         EstadoActividadResidente estado, List<Registro> serie,
-                                        Cobertura cobertura) {
+                                        Cobertura cobertura, List<Registro> origenSinDatos) {
         EstadoVisual visual;
         Fundamento fundamento;
         if (sinOportunidad != null) {
@@ -256,7 +284,8 @@ public final class ServicioAnalisis {
                     : "Hay " + ind.getRegistrosConsiderados() + " registros con oportunidad; se necesitan "
                       + entero(MINIMO_REGISTROS) + " para concluir.";
             visual = EstadoVisual.SIN_DATOS;
-            fundamento = new Fundamento("RB-08 datos suficientes", obtenerParametro(UMBRAL_COBERTURA), texto, List.of());
+            fundamento = new Fundamento("RB-08 datos suficientes", obtenerParametro(UMBRAL_COBERTURA),
+                    texto, origenSinDatos);
         } else if (ind.getRegistrosConsecutivosDominio() >= entero(CRITERIO_DOMINIO)) {
             int n = ind.getRegistrosConsecutivosDominio();
             String extra = ind.isTienePasosCriticos()
@@ -289,6 +318,15 @@ public final class ServicioAnalisis {
         return fundamento;
     }
 
+    private List<Registro> registrosOrigenSinDatos(List<Registro> serie, List<ActividadResidente> plan,
+            Periodo periodo, Cobertura cobertura) {
+        if (cobertura.getRegistrosEsperados() == 0) return ultimos(serie, entero(VENTANA_N));
+        Set<LocalDate> diasPrioritarios = new HashSet<>(
+                diasEnEstado(plan, periodo, EstadoActividadResidente.PRIORITARIA));
+        return serie.stream().filter(r -> periodo.contiene(r.getFechaHora().toLocalDate()))
+                .filter(r -> diasPrioritarios.contains(r.getFechaHora().toLocalDate())).toList();
+    }
+
     /** RB-10. Los parámetros los ajusta la coordinadora sin tocar el código (RNF-36). */
     private double obtenerParametro(String clave) {
         Double valor = parametros.get(clave);
@@ -302,10 +340,10 @@ public final class ServicioAnalisis {
         return (int) obtenerParametro(clave);
     }
 
-    private static EstadoActividadResidente estadoEnElMes(List<ActividadResidente> plan, Periodo periodo) {
+    private static EstadoActividadResidente estadoEnElMes(List<ActividadResidente> plan, LocalDate fecha) {
         EstadoActividadResidente estado = null;
         for (ActividadResidente tramo : plan) {
-            if (vigente(tramo, periodo.fin())) {
+            if (vigente(tramo, fecha)) {
                 estado = tramo.getEstado();
             }
         }
@@ -327,6 +365,11 @@ public final class ServicioAnalisis {
     private static boolean vigente(ActividadResidente tramo, LocalDate fecha) {
         return !fecha.isBefore(tramo.getVigenciaDesde())
                 && (tramo.getVigenciaHasta() == null || !fecha.isAfter(tramo.getVigenciaHasta()));
+    }
+
+    private static LocalDate fechaCorte(Periodo periodo) {
+        LocalDate hoy = LocalDate.now(LIMA);
+        return hoy.isBefore(periodo.fin()) ? hoy : periodo.fin();
     }
 
     private static Object unidad(BandaFrecuencia banda, LocalDate fecha) {

@@ -26,6 +26,20 @@ interface DatosRespuesta {
   ultimosRegistros: unknown[];
 }
 
+export type EstadoActividadVisible = 'SIN_OPORTUNIDAD' | 'SIN_DATOS' | 'DOMINA' | 'RETROCEDE' | 'ESTANCADA' | 'EN_TRABAJO';
+export interface ActividadResidenteVisible { codigo: string; nombre: string; estado: EstadoActividadVisible; negativas: number }
+export interface TarjetaResidenteVisible {
+  codigo: string; nombreVisible: string; iniciales: string; color: string; actividades: ActividadResidenteVisible[];
+}
+export interface RegistroOrigenVisible {
+  fechaHora: string; oportunidad: string; motivoSinOportunidad: string | null; noQuiso: boolean;
+  nivelApoyo: string | null; participo: boolean | null; pasos: Array<{ orden: number; cumplido: boolean }>;
+}
+export interface FundamentoVisible {
+  actividad: string; nombreActividad: string; regla: string; umbral: number | null; texto: string;
+  registrosOrigen: RegistroOrigenVisible[];
+}
+
 /** Inicia sesión y guarda el token Bearer en el almacén del teléfono (RF-01, RF-02, DC-06). */
 export async function iniciarSesion(usuario: string, contrasena: string): Promise<SesionLocal> {
   let respuesta: Response;
@@ -106,6 +120,19 @@ export async function obtenerDatosTurno(codigo: string): Promise<DatosTurnoLocal
   const respuesta = await fetchConToken(`/api/turnos/${codigo}/datos`, sesion.token);
   const cuerpo = await respuesta.json() as DatosRespuesta;
   return cuerpo;
+}
+
+/** Consulta el tablero de avance visible para ambos roles autorizados (RF-53, RF-99, RF-100). */
+export async function obtenerResidentes(): Promise<TarjetaResidenteVisible[]> {
+  const sesion = await sesionActiva();
+  return await (await fetchConToken('/api/residentes', sesion.token)).json() as TarjetaResidenteVisible[];
+}
+
+/** Obtiene el fundamento y los registros de origen de una actividad (RF-53, RF-99). */
+export async function obtenerFundamentoResidente(codigo: string, actividad: string): Promise<FundamentoVisible> {
+  const sesion = await sesionActiva();
+  const url = `/api/residentes/${encodeURIComponent(codigo)}/actividades/${encodeURIComponent(actividad)}/fundamento`;
+  return await (await fetchConToken(url, sesion.token)).json() as FundamentoVisible;
 }
 
 async function sesionActiva(): Promise<SesionLocal> {
