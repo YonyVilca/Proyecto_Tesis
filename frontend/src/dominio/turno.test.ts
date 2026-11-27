@@ -46,6 +46,15 @@ describe('TurnoDeclarado (RF-12, RF-90, DD-27)', () => {
     expect(TurnoDeclarado.desdeLocal(local).contieneMomento(instanteLima(14))).toBe(true);
   });
 
+  it('permite encadenar un tercer turno contiguo después de M→T', () => {
+    const local = { codigo: 'turno-sintetico', tipo: 'M' as const, declaradoEn: instanteLima(8).toISOString(), encadenados: ['T' as const],
+      inicioVentana: turno('M', 7).inicioVentana.toISOString(), finVentana: marcaLocal(19).toISOString(), pendiente: false };
+    const reconstruido = TurnoDeclarado.desdeLocal(local);
+    reconstruido.encadenar('N');
+    expect(reconstruido.encadenados).toEqual(['T', 'N']);
+    expect(reconstruido.finVentana).toEqual(marcaLocal(7, 0, 3));
+  });
+
   it('rechaza encadenar un turno no contiguo', () => {
     expect(() => turno('M', 7, 5).encadenar('N')).toThrow(RangeError);
   });
