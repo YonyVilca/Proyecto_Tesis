@@ -99,7 +99,8 @@ public abstract class Registro implements Auditable {
     public void confirmar(NivelApoyo nivel, String nota, LocalDateTime fin) {
         exigirEstado(EstadoRegistro.A_MEDIAS);
         Objects.requireNonNull(fin);
-        boolean requiereNivel = oportunidad == Oportunidad.SI && !noQuiso;
+        boolean requiereNivel = oportunidad == Oportunidad.SI && !noQuiso
+                && !(this instanceof RegistroEvento evento && !evento.isParticipo());
         if (requiereNivel && nivel == null) {
             throw new IllegalArgumentException("Con oportunidad el nivel de apoyo es obligatorio");
         }
@@ -138,6 +139,12 @@ public abstract class Registro implements Auditable {
         if (estado != esperado) {
             throw new IllegalStateException("El registro está " + estado + " y se esperaba " + esperado);
         }
+    }
+
+    /** Restaura la fecha observada al reconstruir un registro histórico desde su fuente de datos. */
+    void restaurarFechaHora(LocalDateTime fechaHora) {
+        exigirEstado(EstadoRegistro.A_MEDIAS);
+        this.fechaHora = Objects.requireNonNull(fechaHora);
     }
 
     /** Lo común de esPuntuable: confirmado, con oportunidad, sin negativa y con nivel (RB-09). */
