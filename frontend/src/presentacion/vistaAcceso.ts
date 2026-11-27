@@ -1,10 +1,11 @@
-import { cerrarSesion, declararTurno, enviarRegistroPendiente, enviarTurnoPendiente, ErrorApi, ErrorAutenticacion, ErrorRed, iniciarSesion, obtenerDatosTurno, obtenerTurnoVigente } from '../infraestructura/api';
+import { cerrarSesion, declararTurno, enviarRegistroPendiente, enviarTurnoPendiente, ErrorApi, ErrorAutenticacion, ErrorRed, iniciarSesion, obtenerDatosTurno, obtenerFundamentoResidente, obtenerResidentes, obtenerTurnoVigente } from '../infraestructura/api';
 import { AlmacenLocal, type DatosTurnoLocal, type SesionLocal, type TurnoLocal } from '../infraestructura/almacenLocal';
 import { TurnoDeclarado, type TipoTurno } from '../dominio/turno';
 import { recuperarTurnoAlAbrir } from './flujoApertura';
 import { MotorEnvio } from '../aplicacion/motorEnvio';
 import { resumenEnvio } from '../aplicacion/resumenEnvio';
 import { mostrarVistaRegistro } from './vistaRegistro';
+import { mostrarVistaResidentes } from './vistaResidentes';
 import './estilos.css';
 
 const app = document.querySelector<HTMLElement>('#app');
@@ -73,6 +74,11 @@ async function iniciarAplicacion(): Promise<void> {
 }
 
 async function abrirConSesion(sesion: SesionLocal): Promise<void> {
+  if (sesion.cuenta.rol === 'COORDINADORA') {
+    sesionMostrada = sesion;
+    mostrarTableroCoordinadora(sesion);
+    return;
+  }
   try {
     await motorEnvio.enviarPendientes();
   } catch (error) {
@@ -247,19 +253,8 @@ function renderizarFinal(sesion: SesionLocal, turno: Pick<TurnoLocal, 'tipo' | '
   estado.addEventListener('click', () => void mostrarMotivosRechazo());
   estadoEnvio = estado; resumen.append(estado); void actualizarEstadoEnvio();
   const listaRechazos = crear('ul', '', 'lista-rechazos'); listaRechazos.hidden = true; resumen.append(listaRechazos);
-  const residentes = crear('section');
-  residentes.append(crear('h2', 'Residentes'));
-  const lista = crear('ul', '', 'lista-residentes');
-  for (const residente of datos?.expedientes ?? []) {
-    const fila = crear('li', '', 'residente');
-    const insignia = crear('span', residente.iniciales, 'iniciales');
-    insignia.style.backgroundColor = residente.color;
-    insignia.setAttribute('aria-label', `Color ${residente.color}`);
-    fila.append(insignia, crear('span', residente.nombreVisible, 'nombre'));
-    lista.append(fila);
-  }
-  if (!datos?.expedientes.length) lista.append(crear('li', 'No hay datos de turno guardados en este teléfono.', 'residente'));
-  residentes.append(lista);
+  const residentes = crear('section', '', 'tablero-contenedor');
+  if (!navigator.onLine) mostrarNombresLocales(residentes, datos, 'Sin conexión: los estados requieren conexión.');
   const acciones = crear('section', '', 'acciones');
   if (datos && turno.tipo !== 'D') {
     const registrar = crear('button', 'Registrar');
@@ -294,7 +289,64 @@ function renderizarFinal(sesion: SesionLocal, turno: Pick<TurnoLocal, 'tipo' | '
   });
   acciones.append(boton);
   app.append(encabezado, resumen, residentes, acciones);
+  if (navigator.onLine) void cargarTablero(residentes);
   void actualizarEstadoEnvio();
+}
+
+async function cargarTablero(contenedor: HTMLElement): Promise<void> {
+  contenedor.replaceChildren(crear('p', 'Cargando residentes…', 'cargando'));
+  try {
+    const residentes = await obtenerResidentes();
+    if (!contenedor.isConnected) return;
+    contenedor.replaceChildren();
+    mostrarVistaResidentes(contenedor, residentes, obtenerFundamentoResidente);
+  } catch (error) {
+    if (!contenedor.isConnected) return;
+    if (error instanceof ErrorAutenticacion) {
+      await almacen.borrarSesion();
+      mostrarIngreso('Tu sesión expiró; vuelve a ingresar');
+      return;
+    }
+    contenedor.replaceChildren();
+    mostrarNombresLocales(contenedor, await almacen.obtenerDatosTurno(),
+      error instanceof ErrorRed ? 'Sin conexión: los estados requieren conexión.' : 'No se pudo cargar el avance. Intenta de nuevo.');
+    const reintentar = crear('button', 'Actualizar avance', 'secundario');
+    reintentar.addEventListener('click', () => void cargarTablero(contenedor));
+    contenedor.append(reintentar);
+  }
+}
+
+function mostrarNombresLocales(contenedor: HTMLElement, datos: DatosTurnoLocal | undefined, aviso: string): void {
+  const seccion = crear('section', '', 'tablero-residentes');
+  seccion.append(crear('h2', 'Residentes'), crear('p', aviso, 'aviso'));
+  const lista = crear('ul', '', 'lista-residentes');
+  for (const residente of datos?.expedientes ?? []) {
+    const fila = crear('li', '', 'residente');
+    const insignia = crear('span', residente.iniciales, 'iniciales');
+    insignia.style.backgroundColor = residente.color;
+    insignia.setAttribute('aria-label', `Color ${residente.color}`);
+    fila.append(insignia, crear('span', residente.nombreVisible, 'nombre'));
+    lista.append(fila);
+  }
+  if (!datos?.expedientes.length) lista.append(crear('li', 'No hay datos visibles guardados en este teléfono.', 'residente'));
+  seccion.append(lista); contenedor.append(seccion);
+}
+
+function mostrarTableroCoordinadora(sesion: SesionLocal): void {
+  if (!app) return;
+  app.replaceChildren();
+  const encabezado = crear('header');
+  encabezado.append(crear('h1', 'Hogar'), crear('p', `Hola, ${sesion.cuenta.nombreCompleto}.`, 'subtitulo'));
+  const tablero = crear('div', '', 'tablero-contenedor');
+  const acciones = crear('section', '', 'acciones');
+  const salir = crear('button', 'Cerrar sesión', 'secundario');
+  salir.addEventListener('click', () => {
+    salir.disabled = true;
+    void cerrarSesion().then((revocada) => mostrarIngreso(revocada ? '' : 'La sesión se cerró solo en este teléfono.'))
+      .catch(() => { void almacen.borrarSesion().then(() => mostrarIngreso('La sesión se cerró solo en este teléfono.')); });
+  });
+  acciones.append(salir); app.append(encabezado, tablero, acciones);
+  void cargarTablero(tablero);
 }
 
 async function actualizarEstadoEnvio(): Promise<void> {
