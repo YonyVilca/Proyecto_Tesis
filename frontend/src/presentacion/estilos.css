@@ -25,6 +25,10 @@ button:disabled { opacity: .65; }
 .aviso, .error { margin: 16px 0 0; padding: 14px 16px; border-radius: 10px; font-weight: 650; }
 .aviso { color: #553b08; background: #fff2d1; border: 1px solid #e5bd62; }
 .error { color: #7e1b1b; background: #fff0ef; border: 1px solid #e3a4a0; }
+.acciones-registro { display: grid; gap: 12px; }
+.acciones-registro .error { margin: 0; }
+.nota-obligatorio { margin: 0; color: #4c5b52; font-size: .9rem; }
+.campo-invalido select { border-color: #a51f1f; }
 .opciones { display: grid; gap: 14px; margin-top: 20px; }
 .opciones legend { font-weight: 700; }
 .opciones label { display: flex; align-items: center; gap: 12px; }

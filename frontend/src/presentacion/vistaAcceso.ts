@@ -15,19 +15,29 @@ let temporizadorEnvio: number | undefined;
 let turnoMostrado: TurnoLocal | undefined;
 let sesionMostrada: SesionLocal | undefined;
 let estadoEnvio: HTMLButtonElement | undefined;
+let registrando = false;
 
 async function procesarPendientes(): Promise<void> {
   try { await motorEnvio.enviarPendientes(); }
   catch (error) {
     if (error instanceof ErrorAutenticacion) {
+      if (registrando) {
+        await actualizarEstadoEnvio();
+        if (estadoEnvio?.isConnected) estadoEnvio.textContent = 'Tu sesión expiró; vuelve a ingresar para enviar lo pendiente';
+        return;
+      }
       if (sesionMostrada) renderizarFinal(sesionMostrada, turnoMostrado ?? { tipo: 'D', inicioVentana: new Date().toISOString(), finVentana: new Date().toISOString() },
         await almacen.obtenerDatosTurno(), true, 'Tu sesión expiró; vuelve a ingresar para enviar lo pendiente');
       await actualizarEstadoEnvio();
       return;
     }
-    throw error;
+    await actualizarEstadoEnvio();
+    if (estadoEnvio?.isConnected) estadoEnvio.textContent = 'No se pudo enviar; se reintentará';
+    programarSiguienteEnvio();
+    return;
   }
   await actualizarEstadoEnvio();
+  if (registrando) { programarSiguienteEnvio(); return; }
   if (turnoMostrado && sesionMostrada) {
     const actualizado = await almacen.obtenerTurno(turnoMostrado.codigo);
     if (actualizado && turnoMostrado.pendiente && !actualizado.pendiente) {
@@ -214,7 +224,6 @@ function tiposContiguos(turno: TurnoLocal): TipoTurno[] {
 function puedeEncadenar(turno: TurnoLocal, tipo: TipoTurno): boolean {
   try {
     const dominio = TurnoDeclarado.desdeLocal(turno);
-    for (const previo of turno.encadenados) dominio.encadenar(previo);
     dominio.encadenar(tipo);
     return true;
   } catch { return false; }
@@ -237,9 +246,7 @@ function renderizarFinal(sesion: SesionLocal, turno: Pick<TurnoLocal, 'tipo' | '
   estado.setAttribute('role', 'status');
   estado.addEventListener('click', () => void mostrarMotivosRechazo());
   estadoEnvio = estado; resumen.append(estado); void actualizarEstadoEnvio();
-  void almacen.obtenerRegistrosRechazados().then((rechazados) => {
-    if (resumen.isConnected && rechazados.length) mensaje(resumen, 'aviso', `Hay ${rechazados.length} registro(s) rechazado(s) por el servidor.`);
-  });
+  const listaRechazos = crear('ul', '', 'lista-rechazos'); listaRechazos.hidden = true; resumen.append(listaRechazos);
   const residentes = crear('section');
   residentes.append(crear('h2', 'Residentes'));
   const lista = crear('ul', '', 'lista-residentes');
@@ -262,8 +269,10 @@ function renderizarFinal(sesion: SesionLocal, turno: Pick<TurnoLocal, 'tipo' | '
         mensaje(resumen, 'error', 'La ventana del turno está cerrada'); return;
       }
       mostrarVistaRegistro(app!, local, datos, almacen, procesarPendientes, async () => {
+        registrando = false;
         renderizarFinal(sesion, local, await almacen.obtenerDatosTurno(), false);
       });
+      registrando = true;
     });
     acciones.append(registrar);
   }
@@ -299,7 +308,19 @@ async function actualizarEstadoEnvio(): Promise<void> {
 
 async function mostrarMotivosRechazo(): Promise<void> {
   const rechazados = await almacen.obtenerRegistrosRechazados();
-  if (rechazados.length) window.alert(rechazados.map((registro) => `${registro.codigo}: ${registro.rechazado ?? 'Motivo no disponible'}`).join('\n'));
+  const lista = document.querySelector<HTMLElement>('.lista-rechazos');
+  if (!lista) return;
+  lista.replaceChildren();
+  const datos = await almacen.obtenerDatosTurno();
+  for (const registro of rechazados) {
+    const actividad = (datos?.actividades as Array<{ codigo: string; nombre: string }> | undefined)?.find((item) => item.codigo === registro.actividad)?.nombre ?? registro.actividad;
+    const residente = datos?.expedientes.find((item) => item.codigo === registro.expediente)?.nombreVisible ?? registro.expediente;
+    const causa = registro.rechazado === 'RECHAZADO_FUERA_DE_VENTANA' ? 'Fuera del horario del turno'
+      : registro.rechazado === 'RECHAZADO_VALIDACION' ? 'Datos incompletos o inválidos'
+        : registro.rechazado === 'TURNO_RECHAZADO' ? 'El turno no fue aceptado' : 'Motivo no disponible';
+    lista.append(crear('li', `${actividad} · ${residente} · ${causa}`));
+  }
+  lista.hidden = rechazados.length === 0 || !lista.hidden;
 }
 
 function formatoHora(iso: string): string {
