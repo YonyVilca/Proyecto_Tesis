@@ -18,6 +18,9 @@ export function mostrarVistaRegistro(app: HTMLElement, turno: TurnoLocal, datos:
 
   const seleccion = el('fieldset'); seleccion.append(el('legend', 'Residentes'));
   app.append(seleccion);
+  const avisoComenzar = el('p');
+  avisoComenzar.className = 'error'; avisoComenzar.setAttribute('role', 'alert'); avisoComenzar.hidden = true;
+  app.append(avisoComenzar);
   const cargarResidentes = () => {
     seleccion.replaceChildren(el('legend', 'Residentes'));
     residentesPara(datos, actividad.value).forEach((residente) => {
@@ -30,7 +33,9 @@ export function mostrarVistaRegistro(app: HTMLElement, turno: TurnoLocal, datos:
   const comenzar = el('button', 'Comenzar'); comenzar.type = 'button'; app.append(comenzar);
   comenzar.onclick = () => {
     const seleccionados = Array.from(seleccion.querySelectorAll<HTMLInputElement>('input:checked')).map((check) => check.value);
-    if (!seleccionados.length || !actividades.length) return;
+    if (!actividades.length) { avisoComenzar.textContent = 'No hay residentes para esta actividad'; avisoComenzar.hidden = false; return; }
+    if (!seleccionados.length) { avisoComenzar.textContent = 'Elige al menos un residente'; avisoComenzar.hidden = false; return; }
+    avisoComenzar.hidden = true;
     const actividadElegida = actividades.find((a) => a.codigo === actividad.value);
     if (!actividadElegida) return;
     let indice = 0;
@@ -53,8 +58,8 @@ export function mostrarVistaRegistro(app: HTMLElement, turno: TurnoLocal, datos:
       const motivo = el('select');
       MOTIVOS_SIN_OPORTUNIDAD.forEach(([valor, texto]) => { const o = el('option', texto); o.value = valor; motivo.append(o); });
       const otro = el('input'); otro.placeholder = 'Describe el motivo';
-      const campoMotivo = conEtiqueta(ETIQUETAS_REGISTRO.motivo, motivo);
-      const campoOtro = conEtiqueta(ETIQUETAS_REGISTRO.otro, otro);
+      const campoMotivo = conEtiqueta(`${ETIQUETAS_REGISTRO.motivo} *`, motivo);
+      const campoOtro = conEtiqueta(`${ETIQUETAS_REGISTRO.otro} *`, otro);
       formulario.append(campoMotivo, campoOtro);
 
       const noQuiso = el('input'); noQuiso.type = 'checkbox';
@@ -65,7 +70,8 @@ export function mostrarVistaRegistro(app: HTMLElement, turno: TurnoLocal, datos:
       ((datos.escala as { niveles?: Array<{ codigo: string; nombre: string }> }).niveles ?? []).forEach((item) => {
         const o = el('option', item.nombre); o.value = item.codigo; nivel.append(o);
       });
-      formulario.append(conEtiqueta(ETIQUETAS_REGISTRO.nivel, nivel));
+      const campoNivel = conEtiqueta(`${ETIQUETAS_REGISTRO.nivel} *`, nivel);
+      formulario.append(campoNivel);
 
       const grupoPasos = el('fieldset'); grupoPasos.append(el('legend', ETIQUETAS_REGISTRO.pasos));
       const pasos = actividadElegida.plantilla.pasos.map((paso) => {
@@ -97,14 +103,18 @@ export function mostrarVistaRegistro(app: HTMLElement, turno: TurnoLocal, datos:
 
       const confirmar = el('button', 'Confirmar'); confirmar.type = 'submit';
       const cancelar = el('button', 'Cancelar'); cancelar.type = 'button';
-      formulario.append(confirmar, cancelar);
-      const aviso = el('p'); aviso.setAttribute('role', 'status');
+      const acciones = el('div'); acciones.className = 'acciones-registro';
+      const aviso = el('p'); aviso.setAttribute('role', 'alert'); aviso.className = 'error'; aviso.hidden = true;
+      acciones.append(aviso, confirmar, cancelar);
+      formulario.append(el('p', '* Obligatorio'), acciones);
       const avanzar = () => { indice++; siguiente(); };
       cancelar.onclick = avanzar;
       formulario.onsubmit = (evento) => {
         evento.preventDefault();
         if (confirmar.disabled) return;
         confirmar.disabled = true;
+        aviso.hidden = true;
+        nivel.removeAttribute('aria-invalid'); campoNivel.classList.remove('campo-invalido');
         try {
           const registro = construirRegistro({
             codigo: crypto.randomUUID(), expediente, actividad: actividadElegida.codigo,
@@ -122,12 +132,17 @@ export function mostrarVistaRegistro(app: HTMLElement, turno: TurnoLocal, datos:
             window.setTimeout(avanzar, 700);
           }).catch((error: unknown) => {
             aviso.textContent = error instanceof Error ? error.message : 'No se pudo guardar el registro.';
-            if (!aviso.isConnected) formulario.prepend(aviso);
+            aviso.hidden = false;
+            aviso.scrollIntoView?.({ block: 'nearest' });
             confirmar.disabled = false;
           });
         } catch (error) {
           aviso.textContent = error instanceof Error ? error.message : 'No se pudo guardar el registro.';
-          if (!aviso.isConnected) formulario.prepend(aviso);
+          if (oportunidad.value === 'SI' && !noQuiso.checked && !nivel.value) {
+            nivel.setAttribute('aria-invalid', 'true'); campoNivel.classList.add('campo-invalido');
+          }
+          aviso.hidden = false;
+          aviso.scrollIntoView?.({ block: 'nearest' });
           confirmar.disabled = false;
         }
       };
